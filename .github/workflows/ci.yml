@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify FastAPI routes
+        run: |
+          python - <<'PY'
+          from app.main import app
+
+          paths = {route.path for route in app.routes}
+          expected = {"/api/health", "/api/ask", "/docs"}
+          missing = sorted(expected - paths)
+
+          if missing:
+              raise SystemExit(f"Missing routes: {missing}")
+
+          print("Routes OK:", sorted(expected))
+          PY
