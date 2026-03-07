@@ -1,20 +1,37 @@
-version: "3.9"
-
 services:
 
   redis:
     image: redis:7-alpine
     container_name: hybrid-rag-redis
     restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.16.3
+    container_name: hybrid-rag-qdrant
+    restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
   rag-api:
     build: .
     container_name: hybrid-rag-api
+    depends_on:
+      - redis
+      - qdrant
     ports:
       - "8021:8021"
     volumes:
       - .:/app
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION_ALIAS: sec_filings_chunks_current
     restart: unless-stopped
     command: uvicorn app.main:app --host 0.0.0.0 --port 8021
+
+volumes:
+  qdrant_data:
 

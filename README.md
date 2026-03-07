@@ -1,98 +1,90 @@
 # Hybrid RAG SEC AI
 
-Produkční Python projekt pro dotazování nad SEC filingy pomocí hybridního RAG pipeline.
+Produkční Python RAG systém nad SEC filingy. Aktivní runtime je postavený jako:
 
-Projekt kombinuje:
+`FastAPI -> LangGraph -> cache vrstvy -> hybrid retrieval -> rerank -> context build -> DeepSeek`
 
-- SEC EDGAR ingestion
-- offline zpracování filingů do chunků
-- FAISS vektorové vyhledávání
-- BM25 lexikální vyhledávání
-- hybridní merge výsledků
-- LangGraph orchestration
-- DeepSeek LLM answering
-- jednoduchou knowledge graph vrstvu
-- eval skripty pro API, retrieval a RAGAS
+Projekt je určený pro:
 
-Tento README je napsaný jako kompletní handoff dokument. Má sloužit jak pro člověka, tak jako kontext pro další GPT, aby okamžitě chápal:
+- SEC filing QA
+- retrieval debugging
+- evaluaci faithfulness a retrieval quality
+- postupný růst směrem k velkým SEC datasetům
 
-- co ten projekt dělá
-- co je už hotové
-- co je jen připravené, ale není v hlavním request flow
-- jaké jsou vstupy, výstupy a datové artefakty
-- jak projekt spouštět, testovat a rozšiřovat
-- na co si dát pozor při dalších změnách
+README je napsané jako finální handoff dokument pro člověka i pro další GPT. Popisuje skutečný stav kódu po produkčním dokončení dne **2026-03-07**.
 
 ## 1. Co je cílem projektu
 
-Primární cíl je odpovídat na otázky nad SEC firemními filingy tak, aby odpověď byla založená na reálně stažených dokumentech a dohledatelných zdrojích.
+Primární cíl je odpovídat na otázky nad SEC filingy tak, aby odpověď:
+
+- vycházela z reálných filing chunků
+- měla dohledatelné zdroje
+- držela company/form scope
+- byla měřitelná přes retrieval eval i RAGAS
 
 Typické dotazy:
 
-- "What legal risks did Apple mention in its 10-K filings?"
-- "What risks did NVIDIA mention in its annual report?"
-- "What proxy issues did Apple discuss?"
+- `What legal risks did Apple mention in its 10-K filings?`
+- `What did NVIDIA disclose in its annual report?`
+- `What governance topics did Apple discuss in its proxy statement?`
 
-Projekt je zaměřený hlavně na:
+## 2. Finální produkční architektura
 
-- finance
-- risk analysis
-- document QA
-- retrieval quality
-- dohledatelné sources
+### Aktivní runtime v `/api/ask`
 
-## 2. Co je v projektu reálně zapojené dnes
-
-### Aktivně používané v hlavním `/api/ask` flow
-
-- FastAPI endpoint
-- LangGraph workflow
-- query classification
-- inferování company/form filtru z dotazu
-- FAISS retrieval
-- BM25 retrieval
+- FastAPI endpoint v `app/main.py`
+- LangGraph orchestrace v `app/services/answer_service.py`
+- query classification v `app/router/query_router.py`
+- exact answer cache v `data/cache/answer_cache.json`
+- semantic cache v Redis
+- retrieval cache v Redis
+- Qdrant vector retrieval s payload metadata filtry
+- BM25 lexical retrieval
+- hybrid merge
+- CrossEncoder reranker
 - finální metadata filtering
 - context builder
-- DeepSeek LLM generation
-- fallback answer mode
-- cache vrstva
-- source formatting
+- DeepSeek answer generation
+- source formatter
 
-### Existuje v projektu, ale není to hlavní runtime cesta `/api/ask`
+### Co je v projektu, ale není hlavní runtime backend
 
-- CrossEncoder reranker modul
-- knowledge graph builder
+- legacy FAISS build/search utility skripty
+- knowledge graph utility vrstva
 - entity extractor
-- samostatné CLI utility pro FAISS search / FAISS-only answering
 
-### Důležité upřesnění
+FAISS už není aktivní produkční vector backend pro `/api/ask`. Qdrant je finální runtime směr. FAISS utility zůstávají v repu jen jako pomocné nebo historické skripty.
 
-Projekt má knowledge graph moduly, ale aktuální produkční odpověď v `/api/ask` je řízená hlavně hybridním retrieval + LLM flow. Knowledge graph dnes není centrální součástí online answer path.
+## 3. Ověřený snapshot dat a runtime artefaktů
 
-## 3. Aktuální stav dat v repu
-
-V repu už jsou hotová data a artefakty, takže projekt není prázdný skeleton.
-
-Snapshot aktuálního stavu:
+Aktuální snapshot ověřený z lokálních artefaktů:
 
 - `data/companies.csv`: 10 425 firem
-- `data/raw/company_*.json`: 3 stažené company submission JSON soubory
 - `data/raw/filings_html/*.html`: 360 HTML filingů
 - `data/clean/filings_clean.parquet`: 3 011 řádků
 - `data/clean/filings_parsed.parquet`: 360 dokumentů
 - `data/clean/filings_chunks.parquet`: 13 424 chunků
-- `data/vectorstore/faiss/filings_chunks_metadata.parquet`: 13 424 chunk metadata řádků
-- `data/vectorstore/faiss/filings_chunks.index`: FAISS index
-- `data/cache/answer_cache.json`: runtime cache
-- `data/company_graph.gml`: uložený knowledge graph
+- `data/vectorstore/faiss/filings_chunks_metadata.parquet`: 13 424 metadata řádků
+- `data/vectorstore/runtime_manifest.json`: aktivní runtime manifest
+- `data/cache/answer_cache.json`: exact answer cache soubor
+- `tests/synthetic_eval_dataset.json`: 48 syntetických eval otázek
 
-Aktuálně zpracovaný subset firem v parsed/chunk/vector vrstvě:
+Aktivní runtime manifest:
+
+- `backend`: `qdrant`
+- `collection_alias`: `sec_filings_chunks_current`
+- `collection_name`: `sec_filings_chunks_e6063e41814863e6508b7f69`
+- `index_version`: `e6063e41814863e6508b7f69`
+- `embedding_model`: `all-MiniLM-L6-v2`
+- `points_count`: `13424`
+
+Aktuálně zpracované firmy v runtime datech:
 
 - Apple Inc.
 - NVIDIA CORP
 - Alphabet Inc.
 
-Aktuálně zpracované formy v parsed/chunk/vector vrstvě:
+Aktuálně zpracované formy:
 
 - 10-K
 - 10-Q
@@ -102,295 +94,290 @@ Aktuálně zpracované formy v parsed/chunk/vector vrstvě:
 - SC 13G
 - SC 13G/A
 
-## 4. Technologie a knihovny
-
-Hlavní stack:
-
-- Python 3.11
-- FastAPI
-- LangGraph
-- LangChain
-- DeepSeek přes OpenAI-compatible klienta
-- FAISS
-- sentence-transformers
-- CrossEncoder reranker
-- pandas
-- pyarrow
-- rank-bm25
-- ragas
-- datasets
-- BeautifulSoup + lxml
-- networkx
-
-Z `requirements.txt` je důležité:
-
-- `torch` se instaluje z CPU indexu
-- embeddings a reranker běží přes sentence-transformers
-- API je postavené na FastAPI + uvicorn
-
-## 5. Hlavní adresářová struktura
+## 4. Adresářová struktura a role modulů
 
 ```text
 hybrid-rag/
 ├─ app/
 │  ├─ main.py
+│  ├─ core/
+│  │  ├─ logger.py
+│  │  ├─ cache_stats.py
+│  │  └─ cache_admin.py
 │  ├─ services/
-│  │  └─ answer_service.py
-│  ├─ llm/
-│  │  └─ langchain_chain.py
+│  │  ├─ answer_service.py
+│  │  └─ semantic_cache.py
 │  ├─ retrieval/
+│  │  ├─ resources.py
+│  │  ├─ metadata_utils.py
+│  │  ├─ retrieval_cache.py
+│  │  ├─ qdrant_store.py
 │  │  ├─ bm25_retriever.py
 │  │  └─ reranker.py
+│  ├─ llm/
+│  │  ├─ langchain_chain.py
+│  │  └─ synthetic_eval_chain.py
 │  ├─ router/
 │  │  └─ query_router.py
 │  ├─ pipeline/
-│  │  ├─ data_cleaner.py
-│  │  ├─ download_filing_html.py
-│  │  ├─ parse_filing_html.py
 │  │  ├─ chunk_filings.py
-│  │  ├─ build_faiss_index.py
-│  │  ├─ search_faiss.py
-│  │  ├─ answer_faiss.py
-│  │  └─ answer_with_llm.py
+│  │  ├─ build_qdrant_index.py
+│  │  ├─ generate_synthetic_eval_dataset.py
+│  │  ├─ warm_up_runtime.py
+│  │  ├─ answer_with_llm.py
+│  │  └─ legacy FAISS utility skripty
 │  ├─ ingestion/
 │  │  └─ sec_ingest.py
-│  ├─ graph/
-│  │  ├─ graph_builder.py
-│  │  └─ entity_extractor.py
-│  └─ core/
-│     └─ logger.py
+│  └─ graph/
+│     ├─ graph_builder.py
+│     └─ entity_extractor.py
 ├─ data/
 │  ├─ raw/
 │  ├─ clean/
-│  ├─ vectorstore/faiss/
+│  ├─ vectorstore/
+│  │  ├─ faiss/
+│  │  └─ runtime_manifest.json
 │  └─ cache/
 ├─ tests/
 │  ├─ run_eval.py
 │  ├─ run_rag_eval.py
 │  ├─ run_ragas_eval.py
-│  ├─ eval_questions.json
-│  ├─ rag_eval_questions.json
-│  └─ ragas_dataset.json
-├─ .env
-├─ Dockerfile
+│  ├─ run_retrieval_cache_eval.py
+│  ├─ run_semantic_cache_eval.py
+│  ├─ run_synthetic_dataset_check.py
+│  ├─ run_warmup_validation.py
+│  └─ *.json eval artefakty
 ├─ docker-compose.yml
 ├─ requirements.txt
 └─ README.md
 ```
 
-## 6. Role jednotlivých částí
+### Klíčové runtime moduly
 
-### `app/main.py`
+`app/services/answer_service.py`
 
-Hlavní FastAPI vstup.
+- centrální LangGraph orchestrátor
+- inferuje company/form
+- sestavuje cache keys
+- řídí retrieval, rerank, context, LLM, source formatting
 
-Exportuje:
+`app/retrieval/resources.py`
 
-- `GET /api/health`
-- `POST /api/ask`
+- lazy load shared resource vrstvy
+- metadata parquet loader
+- embedding model loader
+- FAISS loader pro legacy utility
+- Redis client
+- runtime manifest loader
 
-### `app/services/answer_service.py`
+`app/retrieval/qdrant_store.py`
 
-Centrální answer orchestration vrstva. Tohle je nejdůležitější runtime modul projektu.
+- Qdrant client
+- runtime collection resolution
+- payload filter builder pro `company_norm` a `form_norm`
+- vector query helper pro aktivní runtime
 
-Obsahuje:
+`app/retrieval/retrieval_cache.py`
 
-- query classification
-- inferování filtrů
-- cache logiku
-- hybrid retrieval flow
-- context builder
-- source formatter
-- LLM call
-- fallback answer konstrukci
-- LangGraph workflow
+- Redis retrieval cache read/write
+- bezpečné keying podle backendu, indexu, filtrů a query
 
-### `app/llm/langchain_chain.py`
+`app/services/semantic_cache.py`
 
-LLM helper vrstva.
+- Redis semantic cache
+- embedding similarity lookup
+- token overlap safety guard
+- company/form/query_type bucket boundaries
 
-Zodpovědnosti:
-
-- načtení `.env`
-- načtení `DEEPSEEK_API_KEY`
-- model/base URL nastavení
-- vytvoření `ChatOpenAI` klienta pro DeepSeek-compatible endpoint
-- spuštění prompt chain
-
-### `app/retrieval/bm25_retriever.py`
-
-Lexikální retrieval přes BM25 nad `chunk_text`.
-
-### `app/retrieval/reranker.py`
-
-CrossEncoder reranker přes `cross-encoder/ms-marco-MiniLM-L-6-v2`.
-
-Důležité:
-
-- modul existuje
-- hlavní produkční graf dnes běží přes hybrid merge cestu
-- reranker je pořád součást projektu a používá se v jiných retrieval cestách / debug flow
-
-### `app/router/query_router.py`
-
-Jednoduchý query classifier:
-
-- `risk`
-- `financial`
-- `compare`
-- `general`
-
-### `app/pipeline/*`
-
-Offline zpracování dat od raw SEC JSONů po chunked dataset a FAISS index.
-
-### `app/ingestion/*`
-
-SEC ingestion utility skripty.
-
-### `app/graph/*`
-
-Knowledge graph utility vrstva.
-
-## 7. Reálný online request flow
+## 5. Online request flow
 
 Když přijde `POST /api/ask`, děje se toto:
 
 1. API přijme `query`, případně `company` a `form`.
 2. `answer_query()` sestaví LangGraph state.
-3. Query classifier určí typ dotazu.
-4. Z dotazu se inferuje firma a forma, pokud uživatel filtr neposlal explicitně.
-5. Cache lookup zkusí vrátit hotovou odpověď.
-6. Pokud cache není použitelná, spustí se retrieval.
-7. Retrieval kombinuje:
-   - FAISS vector retrieval
+3. `prepare` node určí:
+   - `query_type`
+   - effective `company_filter`
+   - effective `form_filter`
+   - `retrieval_backend`
+   - `index_version`
+4. `cache_lookup` zkusí exact answer cache.
+5. Pokud exact cache nevyhoví, `semantic_lookup` zkusí semantic cache.
+6. Pokud semantic cache nevyhoví, `retrieve` node spustí retrieval cache check.
+7. Při retrieval miss se spustí:
+   - Qdrant vector retrieval
    - BM25 lexical retrieval
-8. Výsledky se sjednotí, finálně filtrují podle metadata podmínek, deduplikují a oříznou.
-9. Z výsledků se vytvoří context.
-10. LLM vytvoří finální answer.
-11. Z výsledků se vytvoří `sources`.
-12. Výsledek se případně uloží do cache.
+   - hybrid merge
+   - CrossEncoder rerank
+   - finální metadata filtering
+   - `drop_duplicates(subset=["chunk_text"])`
+   - context limit
+8. `build_context` vytvoří prompt context a `sources`.
+9. `llm` zavolá DeepSeek model.
+10. `save_semantic_cache` uloží bezpečné LLM odpovědi do semantic cache.
+11. `save_cache` uloží exact answer cache jen tam, kde to dává smysl.
 
-### Hlavní LangGraph node flow
-
-Aktuální workflow:
+### Aktivní LangGraph node flow
 
 - `prepare`
 - `cache_lookup`
-- `cache_return` nebo `retrieve`
+- `cache_return` nebo `semantic_lookup`
+- `semantic_return` nebo `retrieve`
 - `retrieval_failed` nebo `build_context`
 - `llm`
+- `save_semantic_cache`
 - `save_cache`
 
-## 8. Retrieval logika
+## 6. Retrieval vrstva
 
-### FAISS část
+### Qdrant jako finální vector backend
 
-FAISS index je postavený nad embeddings z modelu:
+Aktivní vector backend je Qdrant s:
 
-- `all-MiniLM-L6-v2`
+- cosine similarity
+- persistent storage
+- HNSW indexem
+- payload metadata filtry
 
-Vyhledávání probíhá nad metadata subsetem, který se nejdřív filtruje podle:
+Payload obsahuje:
 
-- company
-- form
-
-### BM25 část
-
-BM25 běží nad stejným metadata dataframe a používá:
-
-- tokenizaci přes regex
+- `company`
+- `company_norm`
+- `form`
+- `form_norm`
+- `filing_date`
+- `accession_number`
+- `filing_url`
+- `source_file`
+- `html_title`
+- `document_text_length`
+- `chunk_index`
 - `chunk_text`
+- `chunk_text_length`
+- `chunk_hash`
+- `vector_id`
 
-### Hybrid merge
+### Company/form filtering
 
-Produkční retrieval cesta v answer service dělá:
+Company a form se filtrují server-side přímo v Qdrant přes payload filter nad:
 
-- FAISS retrieval
-- BM25 retrieval
-- spojení do jednoho dataframe
-- finální metadata filter
-- `drop_duplicates(subset=["chunk_text"])`
-- limit na finální context rows
+- `company_norm`
+- `form_norm`
+
+To je zásadní rozdíl proti starému FAISS-only směru. Runtime už není závislý na čistě klientském post-filteru nad vector hity.
+
+### BM25 zůstává
+
+BM25 zůstává jako lexical polovina hybrid retrievalu:
+
+- běží nad `chunk_text`
+- používá sdílený metadata dataframe z `resources.py`
+- nebuildí zbytečně celý stav per request
+
+### Reranker
+
+Rerank se dělá přes CrossEncoder:
+
+- model: `cross-encoder/ms-marco-MiniLM-L-6-v2`
 
 ### Finální context limit
 
-Finální runtime context je omezen na:
+Aktuální finální context limit je:
 
-- 10 chunků
+- `10` chunků
 
-### Query-based metadata inference
+### Legacy FAISS poznámka
 
-Projekt dnes umí z textu dotazu odhadnout:
+V repu stále zůstávají FAISS utility a metadata adresář `data/vectorstore/faiss/`, ale produkční runtime `/api/ask` používá Qdrant. Parquet metadata soubor v tomto adresáři zůstává jako kompatibilní artefakt pro utility a offline skripty.
 
-- firmu
-- filing form
+## 7. Cache vrstvy
 
-Příklady:
+Projekt má tři oddělené cache vrstvy.
 
-- `Apple` -> `Apple Inc.`
-- `NVIDIA` -> `NVIDIA CORP`
-- `Google` nebo `Alphabet` -> `Alphabet Inc.`
-- `annual report` nebo `10-K` -> `10-K`
-- `quarterly report` nebo `10-Q` -> `10-Q`
-- `proxy` -> `DEF 14A`
-- `8-K` -> `8-K`
+### 1. Exact answer cache
 
-## 9. LLM vrstva
-
-Projekt používá:
-
-- `DEEPSEEK_API_KEY` jako jediný secret key
-- `LLM_MODEL` pro model name
-- `LLM_API_URL` pro OpenAI-compatible DeepSeek endpoint
-
-Aktuální default:
-
-- model: `deepseek-chat`
-- base endpoint: `https://api.deepseek.com/chat/completions`
-
-### Důležité pravidlo
-
-Secret se drží jen v env.
-
-Používaný key:
-
-- `DEEPSEEK_API_KEY`
-
-Nepoužívané key názvy:
-
-- `OPENAI_API_KEY`
-- `LLM_API_KEY`
-
-## 10. Cache vrstva
-
-Cache soubor:
+Soubor:
 
 - `data/cache/answer_cache.json`
 
-Cache ukládá:
+Co ukládá:
 
-- query
-- company/form filter
+- finální odpověď
 - mode
-- answer
 - sources
+- timestamps
 - llm metadata
-- errors
-- timestamp
 
 TTL:
 
-- LLM answer cache: 24 hodin
-- fallback cache: 10 minut
+- LLM answer: 24 hodin
+- fallback: 10 minut
 
-Důležitá behavior nuance:
+Důležitá nuance:
 
-- při aktivních metadata filtrech je cache bypassnutá
+- pokud jsou aktivní metadata filtry, exact answer cache se bypassuje
 
-To je záměr, aby se nevracely staré nebo kontaminované výsledky napříč firmami/formami.
+### 2. Retrieval cache
 
-## 11. API kontrakt
+Storage:
+
+- Redis
+
+Co ukládá:
+
+- finální `results_rows` po merge, reranku, metadata filtru, dedupu a limitu
+
+TTL:
+
+- 24 hodin
+
+Key zahrnuje:
+
+- `backend`
+- `index_version`
+- `embedding_model`
+- `reranker_version`
+- normalized `company_filter`
+- normalized `form_filter`
+- hashed query
+- retrieval limits
+
+To brání stale nebo cross-scope reuse po změně indexu nebo filtrů.
+
+### 3. Semantic cache
+
+Storage:
+
+- Redis
+
+Co vrací:
+
+- finální answer
+- finální sources
+
+Co nevrací:
+
+- raw retrieval rows
+
+TTL:
+
+- 7 dní
+
+Bezpečnostní pravidla:
+
+- semantic cache je vypnutá, pokud chybí effective `company_filter`
+- semantic cache je vypnutá, pokud chybí effective `form_filter`
+- bucket je oddělený podle `index_version`, `company`, `form`, `query_type`
+- lookup používá cosine similarity
+- lookup navíc používá token overlap safety guard
+
+Aktuální lookup guardy:
+
+- similarity threshold: `0.82`
+- top1/top2 margin: `0.015`
+- token overlap ratio: `0.5`
+
+## 8. API kontrakt
 
 ### `GET /api/health`
 
@@ -421,26 +408,20 @@ Response:
 ```json
 {
   "query": "What legal risks did Apple mention in its 10-K filings?",
-  "answer": "....",
+  "answer": "...",
   "mode": "llm",
   "sources": "Sources:\n- Apple Inc. | 10-K | ...",
   "cache_hit": false
 }
 ```
 
-### Význam response polí
+API kontrakt se záměrně neměnil. Runtime stále nevrací přímo `retrieved_contexts`. RAGAS eval si je bere interně z retrieval stavu, ne z response contractu.
 
-- `query`: finální query
-- `answer`: vygenerovaná nebo fallback odpověď
-- `mode`: `llm`, `fallback` nebo `cache`
-- `sources`: formátované sources textově
-- `cache_hit`: bool
+## 9. Environment proměnné
 
-### Důležitá poznámka
+Jediný secret key v projektu je:
 
-API kontrakt dnes nevrací přímo list `chunk_text` contextů. Eval skript pro RAGAS si je proto bere interně z retrieval stavu, aniž by měnil API response contract.
-
-## 12. Environment proměnné
+- `DEEPSEEK_API_KEY`
 
 Minimální `.env`:
 
@@ -450,48 +431,45 @@ LLM_MODEL=deepseek-chat
 LLM_API_URL=https://api.deepseek.com/chat/completions
 ```
 
-Volitelné pro RAGAS:
+Volitelné runtime / eval proměnné:
 
 ```env
 RAGAS_EMBEDDING_MODEL=all-MiniLM-L6-v2
 RAGAS_MAX_TOKENS=8192
+REDIS_URL=redis://localhost:6379/0
+QDRANT_URL=http://localhost:6333
+QDRANT_COLLECTION_ALIAS=sec_filings_chunks_current
 ```
 
-### Co je secret
+Nepoužívat:
 
-Secret je jen:
+- `OPENAI_API_KEY`
+- `LLM_API_KEY`
 
-- `DEEPSEEK_API_KEY`
+## 10. Docker a lokální spuštění
 
-### Co secret není
+### Docker
 
-- `LLM_MODEL`
-- `LLM_API_URL`
-- `RAGAS_EMBEDDING_MODEL`
-- `RAGAS_MAX_TOKENS`
+Stack obsahuje:
 
-## 13. Lokální instalace a spuštění
+- `rag-api`
+- `redis`
+- `qdrant`
 
-### Varianta A: Docker
-
-Build a run:
+Spuštění:
 
 ```powershell
 docker compose build
 docker compose up -d
 ```
 
-API:
+Endpointy:
 
-- `http://localhost:8021`
+- API: `http://localhost:8021`
+- Swagger: `http://localhost:8021/docs`
+- Qdrant: `http://localhost:6333`
 
-Swagger:
-
-- `http://localhost:8021/docs`
-
-### Varianta B: Lokální Python
-
-Typický Windows flow:
+### Lokální Python
 
 ```powershell
 python -m venv .venv
@@ -500,395 +478,365 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8021
 ```
 
-## 14. Offline data pipeline krok za krokem
+Poznámka:
 
-Toto je doporučené pořadí pro build dat od raw ingestion po index.
+- pipeline a eval skripty byly upravené tak, aby šly spouštět přímo jako `python path/to/script.py` bez ručního nastavování `PYTHONPATH`
 
-### Krok 1: stáhnout company list a submission JSONy
+## 11. Offline pipeline
+
+### Ingestion a parse
+
+Typické pořadí:
 
 ```powershell
 python app/ingestion/sec_ingest.py
-```
-
-Vytvoří:
-
-- `data/companies.csv`
-- `data/raw/company_<CIK>.json`
-
-Poznámka:
-
-- skript aktuálně stahuje company list a filings pro první 3 firmy z CSV
-
-### Krok 2: rychlá inspekce raw JSONů
-
-```powershell
-python app/pipeline/inspect_filings.py
-```
-
-### Krok 3: vyčistit raw filings metadata
-
-```powershell
 python app/pipeline/data_cleaner.py
-```
-
-Vytvoří:
-
-- `data/clean/filings_clean.parquet`
-
-### Krok 4: připravit `filings_text_html.csv`
-
-Tohle je důležitý manuální nebo externí mezikrok.
-
-Skript `download_filing_html.py` neočekává `filings_clean.parquet`, ale:
-
-- `data/clean/filings_text_html.csv`
-
-Tento CSV musí obsahovat:
-
-- `cik`
-- `company`
-- `form`
-- `filing_date`
-- `document`
-- `accession_number`
-- `accession_nodash`
-- `filing_url`
-
-V repu už ten soubor existuje. Aktuálně má:
-
-- 360 řádků
-
-Prakticky slouží jako filtered metadata soubor určující, které filing HTML stránky se mají stáhnout.
-
-### Krok 5: stáhnout filing HTML
-
-```powershell
 python app/pipeline/download_filing_html.py
-```
-
-Vytvoří:
-
-- `data/raw/filings_html/*.html`
-
-Poznámky:
-
-- používá SEC request headers
-- má delay mezi requesty
-- stahuje podle `filing_url`
-
-### Krok 6: parsovat HTML do textu
-
-```powershell
 python app/pipeline/parse_filing_html.py
-```
-
-Vytvoří:
-
-- `data/clean/filings_parsed.parquet`
-
-Obsahuje:
-
-- company metadata
-- filing metadata
-- HTML title
-- full extracted text
-
-### Krok 7: chunkovat parsed filings
-
-```powershell
 python app/pipeline/chunk_filings.py
 ```
 
-Vytvoří:
+### Build produkčního vector backendu
 
-- `data/clean/filings_chunks.parquet`
+Qdrant build:
 
-Aktuální defaulty:
+```powershell
+python app/pipeline/build_qdrant_index.py
+```
 
-- `CHUNK_SIZE = 2000`
-- `CHUNK_OVERLAP = 300`
+Co dělá:
 
-### Krok 8: postavit FAISS index
+- načte `data/clean/filings_chunks.parquet`
+- doplní `company_norm`, `form_norm`, `chunk_hash`
+- vyrobí embeddings
+- vytvoří novou Qdrant collection
+- zapíše runtime manifest
+- uloží kompatibilní metadata parquet
+
+Výstupy:
+
+- Qdrant collection
+- `data/vectorstore/runtime_manifest.json`
+- `data/vectorstore/faiss/filings_chunks_metadata.parquet`
+
+### Legacy FAISS utility build
+
+Legacy FAISS build zůstává v repu pro utility/debug, ale není hlavní runtime backend:
 
 ```powershell
 python app/pipeline/build_faiss_index.py
 ```
 
-Vytvoří:
+## 12. Synthetic eval dataset
 
-- `data/vectorstore/faiss/filings_chunks.index`
-- `data/vectorstore/faiss/filings_chunks_metadata.parquet`
-
-## 15. CLI utility skripty
-
-### `app/pipeline/search_faiss.py`
-
-FAISS-only search debug tool.
-
-Příklad:
+Generátor:
 
 ```powershell
-python app/pipeline/search_faiss.py "What legal risks did Apple mention?" --company=Apple Inc. --form=10-K
+python app/pipeline/generate_synthetic_eval_dataset.py
 ```
 
-Vrací:
+Zdroj:
 
-- top retrieved chunky
-- score
-- metadata
-
-### `app/pipeline/answer_faiss.py`
-
-FAISS-only extractive answer bez DeepSeek LLM answer service orchestrace.
-
-Příklad:
-
-```powershell
-python app/pipeline/answer_faiss.py "What risks did NVIDIA mention?" --company=NVIDIA CORP --form=10-K
-```
-
-### `app/pipeline/answer_with_llm.py`
-
-Plná answer service cesta přes runtime logiku.
-
-Příklad:
-
-```powershell
-python app/pipeline/answer_with_llm.py "What legal risks did Apple mention in its 10-K filings?"
-```
-
-Skript vypíše:
-
-- query
-- inferred filters
-- model
-- info o key přítomnosti
-- cache mode
-- případné chyby
-- finální answer
-
-## 16. Knowledge graph vrstva
-
-### `app/graph/graph_builder.py`
-
-Staví základní graph z `companies.csv`.
-
-Nodes:
-
-- company
-
-Node atribut:
-
-- ticker
+- `data/clean/filings_chunks.parquet`
 
 Výstup:
 
-- `data/company_graph.gml`
+- `tests/synthetic_eval_dataset.json`
 
-### `app/graph/entity_extractor.py`
+Schema každého záznamu:
 
-Prochází `company_*.json` raw submission files a vytváří edge:
+- `id`
+- `question`
+- `reference`
+- `company`
+- `form`
+- `filing_date`
+- `accession_number`
+- `query_type`
+- `source_chunk_text`
+- `source_chunk_hash`
+- `quality_score`
+- `warmup_eligible`
 
-- `relation="co-mentioned"`
+Aktuálně generované query typy:
 
-Pozor:
+- `risk_factor`
+- `financial_metric`
+- `date_or_period`
+- `governance_or_proxy`
+- `business_or_product`
+- `legal_or_compliance`
 
-- jde o jednoduchou heuristiku
-- není to sophisticated relation extraction
-- hlavní QA flow na tom dnes nezávisí
+## 13. Eval a validační skripty
 
-## 17. Eval a test skripty
+### Smoke/API eval
 
-### `tests/run_eval.py`
-
-Smoke/API eval nad endpointem.
-
-Měří:
-
-- průměrnou latenci
-- kolik odpovědí bylo `llm`
-- kolik odpovědí bylo `fallback`
-
-Vstup:
-
-- `tests/eval_questions.json`
-
-Výstup:
-
-- `tests/eval_results.json`
-
-### `tests/run_rag_eval.py`
-
-Jednoduchý retrieval eval přes kontrolu, zda se v `sources` objeví očekávaná firma a forma.
+```powershell
+python tests/run_eval.py
+```
 
 Měří:
 
-- `hit_at_k`
+- avg latency
+- p95 latency
+- počet `llm` odpovědí
+- počet fallbacků
 
-Vstup:
+### Retrieval eval
 
-- `tests/rag_eval_questions.json`
-
-Výstup:
-
-- `tests/rag_eval_results.json`
-
-### `tests/run_ragas_eval.py`
-
-RAGAS eval script.
+```powershell
+python tests/run_rag_eval.py
+python tests/run_rag_eval.py --dataset tests/synthetic_eval_dataset.json --output tests/rag_eval_results.synthetic.json
+```
 
 Měří:
 
-- faithfulness
-- answer relevancy
+- `hit_at_k` podle toho, zda `sources` obsahují očekávanou firmu a formu
+
+### RAGAS eval
+
+```powershell
+python tests/run_ragas_eval.py
+python tests/run_ragas_eval.py --dataset tests/synthetic_eval_dataset.json
+```
 
 Důležité:
 
-- answer si bere z API
-- retrieved contexts bere z reálných `chunk_text` retrieval výsledků
-- nepoužívá `sources` jako pseudo-context
-- nemění API contract
+- answer se bere z API
+- retrieved contexts se berou z reálných `chunk_text` retrieval výsledků
+- `sources` se nepoužívají jako fake context
 
-Vstup:
+### Retrieval cache eval
 
-- `tests/ragas_dataset.json`
+```powershell
+python tests/run_retrieval_cache_eval.py
+```
 
-## 18. Jak projekt používáme v praxi
+Měří:
 
-### Typický pracovní režim
+- první retrieval miss
+- druhý retrieval hit
+- stejné `results_rows`
 
-1. Udržujeme lokální dataset filingů.
-2. Přegenerujeme chunky a FAISS index, když se dataset mění.
-3. API spouštíme lokálně nebo přes Docker.
-4. Query chování ladíme přes:
-   - `/api/ask`
-   - `answer_with_llm.py`
-   - `search_faiss.py`
-5. Retrieval kvalitu kontrolujeme přes:
-   - `run_rag_eval.py`
-   - `run_ragas_eval.py`
+### Semantic cache eval
 
-### Kdy sahat do kterého souboru
+```powershell
+python tests/run_semantic_cache_eval.py
+```
 
-- API problém: `app/main.py`
-- orchestrace / retrieval flow: `app/services/answer_service.py`
-- LLM config: `app/llm/langchain_chain.py`
-- BM25: `app/retrieval/bm25_retriever.py`
-- reranker: `app/retrieval/reranker.py`
-- query routing: `app/router/query_router.py`
-- offline pipeline: `app/pipeline/*`
-- evaly: `tests/*`
+Měří:
 
-## 19. Známé limity a technické nuance
+- seed write
+- paraphrase hit
+- miss při chybějících effective filtrech
+- miss při jiném company/form scope
 
-### 1. Knowledge graph není centrální answer engine
+### Synthetic dataset check
 
-V projektu je graph vrstva, ale dnešní `/api/ask` flow není graph-first systém.
+```powershell
+python tests/run_synthetic_dataset_check.py
+```
 
-### 2. `filings_text_html.csv` je mezikrok mimo plně automatizovanou pipeline
+Kontroluje:
 
-Tento soubor je dnes důležitý ruční/externí vstup pro HTML download a parse kroky.
+- schema
+- duplicate questions
+- minimum quality
+- overlap reference vs source chunk
+- distribuci typů
 
-### 3. Hlavní answer path má hybrid retrieval, ale ne každá utilita používá identický flow
+### Warm-up validation
 
-Projekt obsahuje více debug a utility scriptů, které nejsou 1:1 shodné s produkční LangGraph answer flow.
+```powershell
+python tests/run_warmup_validation.py
+```
 
-### 4. RAGAS běhy jsou dražší a pomalejší
+Pod kapotou:
 
-Kvůli LLM a embeddings vrstvě může `run_ragas_eval.py` trvat několik minut.
+- spustí `app/pipeline/warm_up_runtime.py`
+- nejdřív flushne cache state
+- udělá cold pass
+- udělá warm pass
+- zapíše reporty
 
-### 5. První běh může stahovat modely
+Výstupy:
 
-První spuštění embeddings/reranker komponent může být pomalejší kvůli model downloadu.
+- `tests/warmup_report.json`
+- `tests/warmup_details.json`
 
-### 6. Cache může měnit chování runtime
+## 14. Warm-up runtime
 
-Při debugování answer flow je potřeba počítat s cache filem v `data/cache/answer_cache.json`.
+Přímé spuštění:
 
-### 7. Procesed subset je menší než full SEC universe
+```powershell
+python app/pipeline/warm_up_runtime.py --flush-cache-state --verify-second-pass
+```
 
-`companies.csv` má přes 10k firem, ale vectorstore dnes reprezentuje jen subset zpracovaných filingů.
+Co dělá:
 
-## 20. Doporučený debugging workflow
+- načte curated a synthetic dataset
+- volá živé `/api/ask`
+- zahřívá retrieval cache
+- zahřívá semantic cache
+- zahřívá exact answer cache tam, kde je aktivní
+- sbírá latency a hit/miss statistiky
 
-Když něco nefunguje:
+Filtruje:
 
-1. zkontroluj `.env`
-2. zkontroluj existenci `filings_chunks.index` a metadata parquet
-3. spusť `search_faiss.py` pro dotaz
-4. spusť `answer_with_llm.py`
-5. zkontroluj `data/cache/answer_cache.json`
-6. zkontroluj, zda query inferuje správnou firmu a form
-7. zkontroluj `sources` v API odpovědi
-8. pak teprve řeš LLM prompting
+- low-quality synthetic řádky
+- `warmup_eligible=false`
+- duplicate kombinace query/company/form
 
-## 21. Důležité vývojové zásady pro další práci
+## 15. Ověřené lokální validační výsledky
 
-Pokud do projektu bude sahat další GPT nebo další vývojář, měl by respektovat:
+Následující výsledky byly ověřené lokálně dne **2026-03-07** na běžícím Docker stacku.
 
-- neměnit API contract bez explicitního požadavku
+### Retrieval cache
+
+`python tests/run_retrieval_cache_eval.py`
+
+- první průchod: miss + write
+- druhý průchod: hit
+- naměřeno:
+  - first latency: `28582.56 ms`
+  - second latency: `1.13 ms`
+
+### Semantic cache
+
+`python tests/run_semantic_cache_eval.py`
+
+- seed query: `llm`
+- paraphrase: `cache_hit=true`
+- missing effective filters: miss
+- wrong scope: miss
+
+### API eval
+
+`python tests/run_eval.py`
+
+- total queries: `3`
+- avg latency: `6782.31 ms`
+- p95 latency: `6643.96 ms`
+- fallback answers: `0`
+
+### Retrieval eval
+
+`python tests/run_rag_eval.py`
+
+- curated `hit_at_k`: `1.0`
+
+`python tests/run_rag_eval.py --dataset tests/synthetic_eval_dataset.json`
+
+- synthetic `hit_at_k`: `0.9167`
+
+### RAGAS eval
+
+`python tests/run_ragas_eval.py --dataset tests/synthetic_eval_dataset.json`
+
+- faithfulness: `0.8785`
+- answer relevancy: `0.8395`
+
+### Warm-up validation
+
+`python tests/run_warmup_validation.py`
+
+- cold pass:
+  - total: `53`
+  - avg latency: `6364.79 ms`
+  - p95 latency: `10535.49 ms`
+- warm pass:
+  - total: `53`
+  - cache hits: `53`
+  - avg latency: `102.0 ms`
+  - p95 latency: `141.56 ms`
+
+## 16. Debugging workflow
+
+Když něco nefunguje, postupuj takto:
+
+1. zkontroluj `.env`, hlavně `DEEPSEEK_API_KEY`
+2. zkontroluj `docker compose ps`
+3. zkontroluj `data/vectorstore/runtime_manifest.json`
+4. zkontroluj, že Qdrant collection existuje a manifest ukazuje na správný `collection_name`
+5. spusť `python app/pipeline/answer_with_llm.py "..."` pro konkrétní query
+6. spusť `python tests/run_retrieval_cache_eval.py`
+7. spusť `python tests/run_semantic_cache_eval.py`
+8. zkontroluj `tests/warmup_report.json`
+9. zkontroluj `data/cache/answer_cache.json`
+10. až potom řeš prompting nebo LLM odpověď
+
+## 17. Důležité technické zásady pro další práci
+
+Další GPT nebo vývojář by měl respektovat:
+
+- neměnit API kontrakt bez explicitního zadání
 - nerefactorovat architekturu jen kvůli stylu
-- držet modularitu podle `app/services`, `app/retrieval`, `app/llm`, `app/pipeline`, `tests`
-- nehardcodovat secret do kódu
-- používat jen `DEEPSEEK_API_KEY` pro secret
-- při retrieval změnách ověřovat `run_rag_eval.py` a `run_ragas_eval.py`
-- neplést si `sources` s reálnými retrieved contexty
+- zachovat modularitu podle `app/services`, `app/retrieval`, `app/llm`, `app/pipeline`, `app/router`, `tests`
+- nepřidávat nové secret názvy
+- secret je jen `DEEPSEEK_API_KEY`
+- nemíchat `sources` s reálnými retrieved contexts
+- při retrieval změnách vždy znovu spustit:
+  - `tests/run_rag_eval.py`
+  - `tests/run_ragas_eval.py`
+  - `tests/run_retrieval_cache_eval.py`
+- při cache změnách vždy znovu spustit:
+  - `tests/run_semantic_cache_eval.py`
+  - `tests/run_warmup_validation.py`
 
-## 22. Co by měl vědět další GPT hned na začátku
+## 18. Co má vědět další GPT hned na začátku
 
-Pokud chceš tenhle projekt předat jinému GPT, můžeš mu poslat minimálně toto:
+Pokud to chceš předat dalšímu GPT, pošli mu minimálně tento blok:
 
 ```text
-Projekt je Python FastAPI + LangGraph hybrid RAG nad SEC filingy.
+Projekt je produkční Python FastAPI + LangGraph hybrid RAG nad SEC filingy.
 
-Hlavní runtime cesta:
-- app/main.py
+Aktivní runtime flow:
+FastAPI -> exact answer cache -> semantic cache -> retrieval cache -> Qdrant + BM25 hybrid retrieval -> CrossEncoder rerank -> context -> DeepSeek.
+
+Hlavní soubory:
 - app/services/answer_service.py
-- app/llm/langchain_chain.py
+- app/services/semantic_cache.py
+- app/retrieval/resources.py
+- app/retrieval/retrieval_cache.py
+- app/retrieval/qdrant_store.py
 - app/retrieval/bm25_retriever.py
-- app/router/query_router.py
+- app/retrieval/reranker.py
+- app/llm/langchain_chain.py
+- app/pipeline/build_qdrant_index.py
+- app/pipeline/generate_synthetic_eval_dataset.py
+- app/pipeline/warm_up_runtime.py
 
-API:
+API contract:
 - POST /api/ask
 - request: query, optional company, optional form
 - response: query, answer, mode, sources, cache_hit
 
-Retrieval:
-- FAISS + BM25 hybrid
-- final metadata filtering
-- final context limit 10 chunků
+Vector backend:
+- Qdrant is the active production backend
+- runtime manifest: data/vectorstore/runtime_manifest.json
+- metadata filters are server-side in Qdrant payload
 
-LLM:
-- DeepSeek
-- secret pouze DEEPSEEK_API_KEY z env
+Caching:
+- exact answer cache: data/cache/answer_cache.json
+- retrieval cache: Redis, final retrieval rows
+- semantic cache: Redis, final answers
+- semantic cache is disabled if effective company_filter is missing
+- semantic cache is disabled if effective form_filter is missing
 
-Data snapshot:
-- parsed filings: 360
-- chunks: 13 424
-- companies in vectorstore: Apple, NVIDIA, Alphabet
-
-Pipeline:
-- sec_ingest.py
-- data_cleaner.py
-- download_filing_html.py
-- parse_filing_html.py
-- chunk_filings.py
-- build_faiss_index.py
+Secrets:
+- use only DEEPSEEK_API_KEY
+- do not introduce OPENAI_API_KEY or LLM_API_KEY
 
 Eval:
-- run_eval.py
-- run_rag_eval.py
-- run_ragas_eval.py
-
-Knowledge graph existuje v projektu, ale dnes není hlavní součást /api/ask flow.
-
-Důležité constraints:
-- neměnit zbytečně architekturu
-- neměnit API contract bez výslovného zadání
-- neplést si sources a retrieved chunk contexts
-- nepřidávat jiné secret key názvy než DEEPSEEK_API_KEY
+- tests/run_eval.py
+- tests/run_rag_eval.py
+- tests/run_ragas_eval.py
+- tests/run_retrieval_cache_eval.py
+- tests/run_semantic_cache_eval.py
+- tests/run_synthetic_dataset_check.py
+- tests/run_warmup_validation.py
 ```
 
-## 23. Shrnutí v jedné větě
+## 19. Shrnutí v jedné větě
 
-Hybrid RAG SEC AI je modulární lokální systém pro ingestion, zpracování, vyhledávání a LLM answer generation nad SEC filingy, kde hlavní produkční answer flow běží přes FastAPI + LangGraph + FAISS/BM25 hybrid retrieval + DeepSeek, a celý projekt je už připravený i na eval a další iteraci.
+Hybrid RAG SEC AI je modulární produkční SEC QA systém, kde `/api/ask` běží přes LangGraph, Qdrant + BM25 hybrid retrieval, vícevrstvou cache strategii, DeepSeek LLM a kompletní eval/warm-up tooling bez změny API kontraktu.

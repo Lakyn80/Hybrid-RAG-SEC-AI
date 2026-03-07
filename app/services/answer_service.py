@@ -11,15 +11,21 @@ from typing import Any, TypedDict
 
 import numpy as np
 import pandas as pd
-import faiss
 from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer
 from langgraph.graph import StateGraph, END
 
+from app.core.cache_stats import increment_cache_stat
 from app.core.logger import get_logger
-from app.retrieval.reranker import rerank
+from app.retrieval import resources as retrieval_resources
+from app.retrieval.reranker import MODEL_NAME as RERANKER_MODEL_NAME, rerank
+from app.retrieval.retrieval_cache import (
+    build_retrieval_cache_key,
+    read_retrieval_cache,
+    write_retrieval_cache,
+)
 from app.llm.langchain_chain import run_chain
 from app.router.query_router import classify_query
+from app.services.semantic_cache import lookup_semantic_cache, save_semantic_cache
 
 logger = get_logger(__name__)
 
@@ -31,25 +37,11 @@ CACHE_DIR = os.path.join(BASE_DIR, "data", "cache")
 CACHE_FILE = os.path.join(CACHE_DIR, "answer_cache.json")
 
 load_dotenv(dotenv_path=ENV_FILE, override=False)
-# --- GLOBAL DATA LOAD (performance) ---
-_metadata_df = None
-_faiss_index = None
-
-def get_metadata_df():
-    global _metadata_df
-    if _metadata_df is None:
-        _metadata_df = pd.read_parquet(METADATA_FILE)
-    return _metadata_df
-
-def get_faiss_index():
-    global _faiss_index
-    if _faiss_index is None:
-        _faiss_index = faiss.read_index(INDEX_FILE)
-    return _faiss_index
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 TOP_K = 10
 RETRIEVAL_CANDIDATES = 20
+VECTOR_SEARCH_K = 50
 MAX_FALLBACK_SENTENCES = 5
 
 LLM_CACHE_TTL_SECONDS = 60 * 60 * 24
@@ -346,51 +338,55 @@ def get_valid_cached_entry(cache_data: dict, cache_key: str) -> dict | None:
     return entry
 
 
-_embedding_model = None
-
-def get_embedding_model():
-    global _embedding_model
-    if _embedding_model is None:
-        _embedding_model = SentenceTransformer(MODEL_NAME)
-    return _embedding_model
-
-
 def search_rows(query: str, company_filter: str | None = None, form_filter: str | None = None) -> pd.DataFrame:
-    if not os.path.exists(INDEX_FILE):
-        raise FileNotFoundError("FAISS index does not exist.")
+    backend = retrieval_resources.get_runtime_vector_backend()
 
-    if not os.path.exists(METADATA_FILE):
-        raise FileNotFoundError("Metadata parquet does not exist.")
+    if backend == "qdrant":
+        from app.retrieval.qdrant_store import search_qdrant_rows
 
-    metadata_df = pd.read_parquet(METADATA_FILE)
-    index = faiss.read_index(INDEX_FILE)
+        results_df = search_qdrant_rows(
+            query,
+            company_filter=company_filter,
+            form_filter=form_filter,
+            limit=VECTOR_SEARCH_K,
+            embedding_model_name=MODEL_NAME,
+        )
+    else:
+        if not os.path.exists(INDEX_FILE):
+            raise FileNotFoundError("FAISS index does not exist.")
 
-    model = get_embedding_model()
+        if not os.path.exists(METADATA_FILE):
+            raise FileNotFoundError("Metadata parquet does not exist.")
 
-    query_embedding = model.encode(
-        [query],
-        convert_to_numpy=True,
-        normalize_embeddings=True,
-    )
-    query_embedding = np.asarray(query_embedding, dtype="float32")
+        metadata_df = retrieval_resources.get_metadata_df()
+        index = retrieval_resources.get_faiss_index()
 
-    search_k = 50
-    scores, indices = index.search(query_embedding, search_k)
+        model = retrieval_resources.get_embedding_model(MODEL_NAME)
 
-    result_rows = []
+        query_embedding = model.encode(
+            [query],
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+        )
+        query_embedding = np.asarray(query_embedding, dtype="float32")
 
-    for score, idx in zip(scores[0], indices[0]):
-        if idx < 0 or idx >= len(metadata_df):
-            continue
+        search_k = min(VECTOR_SEARCH_K, len(metadata_df))
+        scores, indices = index.search(query_embedding, search_k)
 
-        row = metadata_df.iloc[int(idx)].copy()
-        row["score"] = float(score)
-        result_rows.append(row)
+        result_rows = []
 
-    if not result_rows:
-        raise ValueError("No search results found.")
+        for score, idx in zip(scores[0], indices[0]):
+            if idx < 0 or idx >= len(metadata_df):
+                continue
 
-    results_df = pd.DataFrame(result_rows)
+            row = metadata_df.iloc[int(idx)].copy()
+            row["score"] = float(score)
+            result_rows.append(row)
+
+        if not result_rows:
+            raise ValueError("No search results found.")
+
+        results_df = pd.DataFrame(result_rows)
 
     results_df = apply_metadata_filters(
         results_df,
@@ -513,9 +509,14 @@ class GraphState(TypedDict, total=False):
     company_filter: str | None
     form_filter: str | None
     query_type: str
+    retrieval_backend: str
+    index_version: str
+    retrieval_cache_key: str
+    retrieval_cache_hit: bool
     cache_key: str
     cache_data: dict
     cached_entry: dict | None
+    semantic_cached_entry: dict | None
     results_rows: list[dict[str, Any]] | None
     context: str
     sources_text: str
@@ -545,6 +546,20 @@ def node_prepare(state: GraphState) -> GraphState:
     company_filter = state.get("company_filter") or infer_company_filter(query)
     form_filter = state.get("form_filter") or infer_form_filter(query)
     query_type = classify_query(query)
+    retrieval_backend = retrieval_resources.get_runtime_vector_backend()
+    index_version = retrieval_resources.get_vector_index_version()
+    retrieval_cache_key = build_retrieval_cache_key(
+        query,
+        company_filter,
+        form_filter,
+        backend=retrieval_backend,
+        index_version=index_version,
+        embedding_model=MODEL_NAME,
+        reranker_version=RERANKER_MODEL_NAME,
+        vector_k=VECTOR_SEARCH_K,
+        bm25_k=RETRIEVAL_CANDIDATES,
+        top_k=TOP_K,
+    )
     cache_data = cleanup_expired_cache(load_cache())
     cache_key = build_cache_key(query, company_filter, form_filter)
 
@@ -555,6 +570,10 @@ def node_prepare(state: GraphState) -> GraphState:
         "company_filter": company_filter,
         "form_filter": form_filter,
         "query_type": query_type,
+        "retrieval_backend": retrieval_backend,
+        "index_version": index_version,
+        "retrieval_cache_key": retrieval_cache_key,
+        "retrieval_cache_hit": False,
         "cache_data": cache_data,
         "cache_key": cache_key,
         "llm_model": LLM_MODEL,
@@ -562,6 +581,7 @@ def node_prepare(state: GraphState) -> GraphState:
         "cache_mode": None,
         "retrieval_error": None,
         "llm_error": None,
+        "semantic_cached_entry": None,
         "sources_text": "",
         "answer": "",
     }
@@ -576,14 +596,16 @@ def node_cache_lookup(state: GraphState) -> GraphState:
 
     if cached_entry:
         logger.info(f"cache_hit=True cache_mode={cached_entry.get('mode')}")
+        increment_cache_stat("answer_cache", "hit")
     else:
         logger.info("cache_hit=False")
+        increment_cache_stat("answer_cache", "miss")
 
     return {"cached_entry": cached_entry}
 
 
 def route_after_cache(state: GraphState) -> str:
-    return "cache_return" if state.get("cached_entry") else "retrieve"
+    return "cache_return" if state.get("cached_entry") else "semantic_lookup"
 
 
 def node_cache_return(state: GraphState) -> GraphState:
@@ -601,9 +623,61 @@ def node_cache_return(state: GraphState) -> GraphState:
     }
 
 
+def node_semantic_cache_lookup(state: GraphState) -> GraphState:
+    semantic_entry = lookup_semantic_cache(
+        state["query"],
+        company_filter=state.get("company_filter"),
+        form_filter=state.get("form_filter"),
+        query_type=state.get("query_type", "general"),
+        index_version=state["index_version"],
+        embedding_model_name=MODEL_NAME,
+    )
+
+    if semantic_entry:
+        logger.info("semantic_cache_hit=True")
+    else:
+        logger.info("semantic_cache_hit=False")
+
+    return {
+        "semantic_cached_entry": semantic_entry,
+    }
+
+
+def route_after_semantic_cache(state: GraphState) -> str:
+    return "semantic_return" if state.get("semantic_cached_entry") else "retrieve"
+
+
+def node_semantic_cache_return(state: GraphState) -> GraphState:
+    semantic_entry = state["semantic_cached_entry"]
+
+    return {
+        "mode": "cache",
+        "answer": str(semantic_entry.get("answer", "")),
+        "cache_hit": True,
+        "cache_mode": "semantic",
+        "llm_model": str(semantic_entry.get("llm_model") or LLM_MODEL),
+        "sources_text": str(semantic_entry.get("sources_text") or ""),
+        "retrieval_error": None,
+        "llm_error": None,
+    }
+
+
 def node_parallel_retrieve(state: GraphState) -> GraphState:
     try:
         query = state["query"]
+        retrieval_cache_key = state["retrieval_cache_key"]
+
+        cached_retrieval = read_retrieval_cache(retrieval_cache_key)
+        if cached_retrieval and cached_retrieval.get("rows"):
+            logger.info("retrieval_cache_hit=True")
+            return {
+                "results_rows": cached_retrieval["rows"],
+                "retrieval_error": None,
+                "retrieval_cache_hit": True,
+            }
+
+        logger.info("retrieval_cache_hit=False")
+        start_retrieval = time.time()
 
         vector_df = search_rows(
             query,
@@ -612,33 +686,60 @@ def node_parallel_retrieve(state: GraphState) -> GraphState:
         )
 
         from app.retrieval.bm25_retriever import bm25_search
-        metadata_df = pd.read_parquet(METADATA_FILE)
+        metadata_df = retrieval_resources.get_metadata_df()
 
         bm25_df = bm25_search(
             query,
             metadata_df,
             state.get("company_filter"),
             state.get("form_filter"),
+            top_k=RETRIEVAL_CANDIDATES,
         )
 
         merged = pd.concat([vector_df, bm25_df], ignore_index=True)
         logger.info(f"parallel_retrieval_rows={len(merged)}")
 
-        results_df = finalize_results_df(
+        start_rerank = time.time()
+        reranked_df = rerank(
+            query,
             merged,
+            top_k=min(len(merged), RETRIEVAL_CANDIDATES),
+        )
+        rerank_ms = int((time.time() - start_rerank) * 1000)
+        logger.info(f"rerank_ms={rerank_ms}")
+        logger.info(f"reranked_rows={len(reranked_df)}")
+
+        results_df = finalize_results_df(
+            reranked_df,
             company_filter=state.get("company_filter"),
             form_filter=state.get("form_filter"),
         )
+        retrieval_ms = int((time.time() - start_retrieval) * 1000)
+        logger.info(f"retrieval_ms={retrieval_ms}")
+
+        results_rows = dataframe_to_records(results_df)
+        cache_written = write_retrieval_cache(
+            retrieval_cache_key,
+            query=query,
+            company_filter=state.get("company_filter"),
+            form_filter=state.get("form_filter"),
+            backend=state["retrieval_backend"],
+            index_version=state["index_version"],
+            rows=results_rows,
+        )
+        logger.info(f"retrieval_cache_write={cache_written}")
 
         return {
-            "results_rows": dataframe_to_records(results_df),
+            "results_rows": results_rows,
             "retrieval_error": None,
+            "retrieval_cache_hit": False,
         }
     except Exception as exc:
         logger.info(f"retrieval_error={exc}")
         return {
             "results_rows": None,
             "retrieval_error": str(exc),
+            "retrieval_cache_hit": False,
             "mode": "fallback",
             "answer": "",
             "sources_text": "",
@@ -726,6 +827,29 @@ def node_llm(state: GraphState) -> GraphState:
         }
 
 
+def node_save_semantic_cache(state: GraphState) -> GraphState:
+    if state.get("cache_hit") or state.get("retrieval_error") or state.get("llm_error"):
+        return state
+
+    if state.get("mode") != "llm":
+        return state
+
+    semantic_saved = save_semantic_cache(
+        state["query"],
+        answer=state.get("answer", ""),
+        sources_text=state.get("sources_text", ""),
+        company_filter=state.get("company_filter"),
+        form_filter=state.get("form_filter"),
+        query_type=state.get("query_type", "general"),
+        llm_model=state.get("llm_model", LLM_MODEL),
+        index_version=state["index_version"],
+        results_rows=state.get("results_rows"),
+        embedding_model_name=MODEL_NAME,
+    )
+    logger.info(f"semantic_cache_write={semantic_saved}")
+    return state
+
+
 def node_save_cache(state: GraphState) -> GraphState:
     if state.get("cache_hit") or state.get("retrieval_error"):
         return state
@@ -748,6 +872,7 @@ def node_save_cache(state: GraphState) -> GraphState:
         "created_at": time.time(),
     }
     save_cache(cache_data)
+    increment_cache_stat("answer_cache", "write")
     return state
 
 
@@ -764,10 +889,13 @@ def get_answer_graph():
     workflow.add_node("prepare", node_prepare)
     workflow.add_node("cache_lookup", node_cache_lookup)
     workflow.add_node("cache_return", node_cache_return)
+    workflow.add_node("semantic_lookup", node_semantic_cache_lookup)
+    workflow.add_node("semantic_return", node_semantic_cache_return)
     workflow.add_node("retrieve", node_parallel_retrieve)
     workflow.add_node("retrieval_failed", node_retrieval_failed)
     workflow.add_node("build_context", node_build_context)
     workflow.add_node("llm", node_llm)
+    workflow.add_node("save_semantic_cache", node_save_semantic_cache)
     workflow.add_node("save_cache", node_save_cache)
 
     workflow.set_entry_point("prepare")
@@ -777,10 +905,19 @@ def get_answer_graph():
         route_after_cache,
         {
             "cache_return": "cache_return",
-            "retrieve": "retrieve",
+            "semantic_lookup": "semantic_lookup",
         },
     )
     workflow.add_edge("cache_return", END)
+    workflow.add_conditional_edges(
+        "semantic_lookup",
+        route_after_semantic_cache,
+        {
+            "semantic_return": "semantic_return",
+            "retrieve": "retrieve",
+        },
+    )
+    workflow.add_edge("semantic_return", END)
     workflow.add_conditional_edges(
         "retrieve",
         route_after_retrieve,
@@ -791,7 +928,8 @@ def get_answer_graph():
     )
     workflow.add_edge("retrieval_failed", END)
     workflow.add_edge("build_context", "llm")
-    workflow.add_edge("llm", "save_cache")
+    workflow.add_edge("llm", "save_semantic_cache")
+    workflow.add_edge("save_semantic_cache", "save_cache")
     workflow.add_edge("save_cache", END)
 
     _graph = workflow.compile()

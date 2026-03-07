@@ -1,8 +1,14 @@
 import os
 import re
+import sys
 import pandas as pd
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+from app.retrieval.metadata_utils import build_chunk_hash, normalize_metadata_value
+
 INPUT_FILE = os.path.join(BASE_DIR, "data", "clean", "filings_parsed.parquet")
 OUTPUT_FILE = os.path.join(BASE_DIR, "data", "clean", "filings_chunks.parquet")
 
@@ -93,7 +99,9 @@ def chunk_filings() -> int:
         for chunk_index, chunk_text in enumerate(chunks):
             records.append({
                 "company": row["company"],
+                "company_norm": normalize_metadata_value(row["company"]),
                 "form": row["form"],
+                "form_norm": normalize_metadata_value(row["form"]),
                 "filing_date": row["filing_date"],
                 "accession_number": row["accession_number"],
                 "filing_url": row["filing_url"],
@@ -103,6 +111,7 @@ def chunk_filings() -> int:
                 "chunk_index": chunk_index,
                 "chunk_text": chunk_text,
                 "chunk_text_length": len(chunk_text),
+                "chunk_hash": build_chunk_hash(chunk_text),
             })
 
     chunks_df = pd.DataFrame(records)

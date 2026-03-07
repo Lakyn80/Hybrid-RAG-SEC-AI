@@ -2,14 +2,33 @@ from rank_bm25 import BM25Okapi
 import pandas as pd
 import re
 
+from app.retrieval import resources
+
+_tokenized_corpus = None
+
 
 def tokenize(text):
     return re.findall(r"\w+", str(text).lower())
 
 
-def bm25_search(query, metadata_df, company_filter=None, form_filter=None, top_k=20):
+def get_tokenized_corpus() -> list[list[str]]:
+    global _tokenized_corpus
 
-    df = metadata_df.copy()
+    if _tokenized_corpus is None:
+        metadata_df = resources.get_metadata_df()
+        _tokenized_corpus = [
+            tokenize(doc)
+            for doc in metadata_df["chunk_text"].astype(str).tolist()
+        ]
+
+    return _tokenized_corpus
+
+
+def bm25_search(query, metadata_df=None, company_filter=None, form_filter=None, top_k=20):
+
+    base_df = metadata_df if metadata_df is not None else resources.get_metadata_df()
+
+    df = base_df.copy()
 
     if company_filter:
         df = df[
@@ -30,8 +49,8 @@ def bm25_search(query, metadata_df, company_filter=None, form_filter=None, top_k
     if df.empty:
         return df
 
-    corpus = df["chunk_text"].astype(str).tolist()
-    tokenized_corpus = [tokenize(doc) for doc in corpus]
+    full_tokenized_corpus = get_tokenized_corpus()
+    tokenized_corpus = [full_tokenized_corpus[int(idx)] for idx in df.index.tolist()]
 
     bm25 = BM25Okapi(tokenized_corpus)
 

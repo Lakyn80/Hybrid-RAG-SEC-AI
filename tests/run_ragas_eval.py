@@ -1,11 +1,17 @@
+import argparse
 import json
 import os
+import sys
 
 import requests
+from datasets import Dataset
 from dotenv import load_dotenv
 from openai import OpenAI
 from sentence_transformers import SentenceTransformer
-from datasets import Dataset
+
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 
 from ragas import evaluate
 from ragas.llms import llm_factory
@@ -16,6 +22,8 @@ from app.llm.langchain_chain import get_llm_settings
 from app.services.answer_service import node_parallel_retrieve, node_prepare
 
 load_dotenv()
+
+DEFAULT_DATASET = "tests/ragas_dataset.json"
 
 
 class LocalSentenceTransformerEmbeddings:
@@ -95,40 +103,59 @@ def extract_retrieved_contexts(api_result: dict, query: str) -> list[str]:
     return contexts
 
 
-with open("tests/ragas_dataset.json", "r", encoding="utf-8") as f:
-    data = json.load(f)
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset", default=DEFAULT_DATASET)
+    args = parser.parse_args()
 
-questions = []
-answers = []
-contexts = []
-ground_truths = []
+    with open(args.dataset, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
-for row in data:
-    response = requests.post(API_URL, json={"query": row["question"]})
-    response.raise_for_status()
-    result = response.json()
+    questions = []
+    answers = []
+    contexts = []
+    ground_truths = []
 
-    questions.append(row["question"])
-    answers.append(result.get("answer", ""))
-    contexts.append(extract_retrieved_contexts(result, row["question"]))
-    ground_truths.append(row["ground_truth"])
+    for row in data:
+        question = row.get("question") or row.get("query")
+        if not question:
+            continue
 
-dataset = Dataset.from_dict({
-    "question": questions,
-    "answer": answers,
-    "retrieved_contexts": contexts,
-    "ground_truth": ground_truths,
-})
+        response = requests.post(API_URL, json={"query": question})
+        response.raise_for_status()
+        result = response.json()
 
-result = evaluate(
-    dataset,
-    metrics=[
-        Faithfulness(llm=ragas_llm),
-        ResponseRelevancy(llm=ragas_llm, strictness=1),
-    ],
-    embeddings=ragas_embeddings,
-)
+        reference = row.get("ground_truth") or row.get("reference")
+        if not reference:
+            continue
 
-print("\nRAGAS EVALUATION\n")
-print(result)
+        questions.append(question)
+        answers.append(result.get("answer", ""))
+        contexts.append(extract_retrieved_contexts(result, question))
+        ground_truths.append(reference)
 
+    dataset = Dataset.from_dict(
+        {
+            "question": questions,
+            "answer": answers,
+            "retrieved_contexts": contexts,
+            "ground_truth": ground_truths,
+        }
+    )
+
+    result = evaluate(
+        dataset,
+        metrics=[
+            Faithfulness(llm=ragas_llm),
+            ResponseRelevancy(llm=ragas_llm, strictness=1),
+        ],
+        embeddings=ragas_embeddings,
+    )
+
+    print("\nRAGAS EVALUATION\n")
+    print(result)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

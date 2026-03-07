@@ -1,0 +1,9 @@
+{
+  "backend": "qdrant",
+  "collection_alias": "sec_filings_chunks_current",
+  "collection_name": "sec_filings_chunks_e6063e41814863e6508b7f69",
+  "index_version": "e6063e41814863e6508b7f69",
+  "embedding_model": "all-MiniLM-L6-v2",
+  "points_count": 13424,
+  "built_at": 1772901613
+}

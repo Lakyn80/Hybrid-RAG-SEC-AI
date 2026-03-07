@@ -26,6 +26,8 @@ langgraph
 pydantic
 tiktoken
 rank-bm25
+redis
+qdrant-client
 ragas
 datasets
 langchain
