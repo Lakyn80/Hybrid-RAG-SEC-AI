@@ -1,0 +1,28 @@
+{
+  "summary": {
+    "total_queries": 3,
+    "avg_latency_ms": 21531.964699427288,
+    "llm_answers": 3,
+    "fallback_answers": 0
+  },
+  "results": [
+    {
+      "query": "What legal risks did Apple mention in its 10-K filings?",
+      "mode": "llm",
+      "cache_hit": false,
+      "sources": "Sources:\n- Apple Inc. | 10-K | 2018-11-05 | https://www.sec.gov/Archives/edgar/data/320193/000032019318000145/a10-k20189292018.htm\n- Apple Inc. | 10-K | 2019-10-31 | https://www.sec.gov/Archives/edgar/data/320193/000032019319000119/a10-k20199282019.htm\n- Apple Inc. | 10-K | 2023-11-03 | https://www.sec.gov/Archives/edgar/data/320193/000032019323000106/aapl-20230930.htm\n- Apple Inc. | 10-K | 2022-10-28 | https://www.sec.gov/Archives/edgar/data/320193/000032019322000108/aapl-20220924.htm\n- Apple Inc. | 10-K | 2025-10-31 | https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm"
+    },
+    {
+      "query": "What supply chain risks did Apple mention?",
+      "mode": "llm",
+      "cache_hit": false,
+      "sources": "Sources:\n- Apple Inc. | 10-Q | 2025-05-02 | https://www.sec.gov/Archives/edgar/data/320193/000032019325000057/aapl-20250329.htm\n- Apple Inc. | 10-Q | 2019-01-30 | https://www.sec.gov/Archives/edgar/data/320193/000032019319000010/a10-qq1201912292018.htm\n- Apple Inc. | DEF 14A | 2022-01-06 | https://www.sec.gov/Archives/edgar/data/320193/000119312522003583/d222670ddef14a.htm\n- Apple Inc. | 10-Q | 2019-05-01 | https://www.sec.gov/Archives/edgar/data/320193/000032019319000066/a10-qq220193302019.htm\n- Apple Inc. | 10-K | 2015-10-28 | https://www.sec.gov/Archives/edgar/data/320193/000119312515356351/d17062d10k.htm\n- Apple Inc. | 10-K | 2017-11-03 | https://www.sec.gov/Archives/edgar/data/320193/000032019317000070/a10-k20179302017.htm"
+    },
+    {
+      "query": "What regulatory risks did NVIDIA mention?",
+      "mode": "llm",
+      "cache_hit": false,
+      "sources": "Sources:\n- NVIDIA CORP | 10-Q | 2023-08-28 | https://www.sec.gov/Archives/edgar/data/1045810/000104581023000175/nvda-20230730.htm\n- NVIDIA CORP | 8-K | 2020-09-14 | https://www.sec.gov/Archives/edgar/data/1045810/000119312520244601/d13958d8k.htm\n- NVIDIA CORP | 10-K | 2023-02-24 | https://www.sec.gov/Archives/edgar/data/1045810/000104581023000017/nvda-20230129.htm\n- NVIDIA CORP | 10-Q | 2025-05-28 | https://www.sec.gov/Archives/edgar/data/1045810/000104581025000116/nvda-20250427.htm\n- NVIDIA CORP | 10-Q | 2021-08-20 | https://www.sec.gov/Archives/edgar/data/1045810/000104581021000131/nvda-20210801.htm\n- NVIDIA CORP | 10-Q | 2023-05-26 | https://www.sec.gov/Archives/edgar/data/1045810/000104581023000093/nvda-20230430.htm"
+    }
+  ]
+}

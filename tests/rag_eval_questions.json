@@ -1,0 +1,17 @@
+[
+  {
+    "query": "What legal risks did Apple mention in its 10-K filings?",
+    "company": "Apple Inc.",
+    "form": "10-K"
+  },
+  {
+    "query": "What risks did NVIDIA mention in its annual report?",
+    "company": "NVIDIA CORP",
+    "form": "10-K"
+  },
+  {
+    "query": "What proxy issues did Apple discuss?",
+    "company": "Apple Inc.",
+    "form": "DEF 14A"
+  }
+]

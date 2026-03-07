@@ -1,0 +1,202 @@
+[
+  {
+    "question": "What was the total amount of cash, cash equivalents, and marketable securities held as of October 25, 2020?",
+    "ground_truth": "es increased in the first nine months of fiscal year 2021 compared to the first nine months of fiscal year 2020, due to higher net income, partially offset by changes in working capital. Changes in working capital include increases in outstanding trade receivables, purchases of inventory, and a prepayment of royalties to Arm. Cash used in investing activities increased in the first nine months of fiscal year 2021 compared to cash provided in the first nine months of fiscal year 2020, which prima"
+  },
+  {
+    "question": "What was the total cash dividends declared and paid by Apple Inc. in 2017?",
+    "ground_truth": "ve instruments see the Derivative Financial Instruments section of Note 2, \u201cFinancial Instruments.\u201d Apple Inc. | 2017 Form 10-K | 59 The effective interest rates for the Notes include the interest on the Notes, amortization of the discount or premium and, if applicable, adjustments related to hedging. The Company recognized $2.2 billion , $1.4 billion and $722 million of interest expense on its term debt for 2017 , 2016 and 2015 , respectively. The future principal payments for the Company\u2019s Not"
+  },
+  {
+    "question": "What are the three performance obligations included in arrangements for the sale of iPhone, Mac, iPad, and certain other products?",
+    "ground_truth": "rmance obligations regularly included in arrangements involving the sale of iPhone, Mac, iPad and certain other products. The first performance obligation, which represents the substantial portion of the allocated sales price, is the hardware and bundled software delivered at the time of sale. The second performance obligation is the right to receive certain product-related bundled services, which include iCloud, Siri and Maps. The third performance obligation is the right to receive, on a when-"
+  },
+  {
+    "question": "What is the name of NVIDIA's cloud platform for gaming mentioned in the text?",
+    "ground_truth": "perience on our GeForce platform. Our GeForce Experience gaming application further enhances each gamer\u2019s experience by optimizing their PC\u2019s settings, as well as enabling the recording and sharing of gameplay. We also enable interactive graphics applications - such as games, movie and photo editing and design software - to be accessed by almost any device, almost anywhere, through our cloud platforms such as GRID for enterprise and GeForce NOW for gaming. Advancing the leading autonomous vehicl"
+  },
+  {
+    "question": "What was the end date of the quarterly period covered by this Apple Inc. Form 10-Q?",
+    "ground_truth": "0000320193 us-gaap:MaterialReconcilingItemsMember 2023-10-01 2023-12-30 0000320193 us-gaap:MaterialReconcilingItemsMember 2022-09-25 2022-12-31 0000320193 us-gaap:CorporateNonSegmentMember 2023-10-01 2023-12-30 0000320193 us-gaap:CorporateNonSegmentMember 2022-09-25 2022-12-31 0000320193 aapl:LucaMaestriMember 2023-10-01 2023-12-30 0000320193 aapl:KatherineLAdamsMember 2023-10-01 2023-12-30 UNITED STATES SECURITIES AND EXCHANGE COMMISSION Washington, D.C. 20549 FORM 10-Q (Mark One) \u2612 QUARTERLY R"
+  },
+  {
+    "question": "What is one factor that could cause NVIDIA to underestimate or overestimate demand for its products?",
+    "ground_truth": "act our gross margins and financial results. Factors that have caused and/or could in the future cause us to underestimate or overestimate demand, and impact the timing and volume of our revenue, include: \u2022 changes in product development cycles and time to market; \u2022 competing technologies and competitor product releases, announcements or other actions; \u2022 changes in business and economic conditions; \u2022 sudden or sustained government lockdowns or public health issues; \u2022 rapidly changing technology "
+  },
+  {
+    "question": "What was the amount of Apple's ending accrued warranty and related costs for the year 2016?",
+    "ground_truth": "ighted-average period of 2.6 years . Apple Inc. | 2016 Form 10-K | 64 Note 10 \u2013 Commitments and Contingencies Accrued Warranty and Indemnification The following table shows changes in the Company\u2019s accrued warranties and related costs for 2016 , 2015 and 2014 (in millions): 2016 2015 2014 Beginning accrued warranty and related costs $ 4,780 $ 4,159 $ 2,967 Cost of warranty claims (4,663 ) (4,401 ) (3,760 ) Accruals for product warranty 3,585 5,022 4,952 Ending accrued warranty and related costs "
+  },
+  {
+    "question": "What is the due date of the Fixed Rate Notes represented by Exhibit 4.9?",
+    "ground_truth": "ue 2019 (included in Exhibit 4.1) 4.3 Form of Global Note representing the Floating Rate Notes due 2020 (included in Exhibit 4.1) 4.4 Form of Global Note representing the Floating Rate Notes due 2022 (included in Exhibit 4.1) 4.5 Form of Global Note representing the Fixed Rate Notes due 2019 (included in Exhibit 4.1) 4.6 Form of Global Note representing the Fixed Rate Notes due 2020 (included in Exhibit 4.1) 4.7 Form of Global Note representing the Fixed Rate Notes due 2022 (included in Exhibit "
+  },
+  {
+    "question": "What was Alphabet Inc.'s effective tax rate for the nine months ended September 30, 2023?",
+    "ground_truth": "$2.8 billion of interest income. This was partially offset by $678 million of net unrealized losses on non-marketable equity securities. In the nine months ended September 30, 2022, we recognized $2.5 billion of net unrealized losses on marketable equity securities. This was partially offset by $1.5 billion of interest income recognized. 45 Table of Contents Alphabet Inc. See Note 6 of the Notes to Consolidated Financial Statements included in Item 1 of this Quarterly Report on Form 10-Q for fur"
+  },
+  {
+    "question": "What is the required vote for approval of the stockholder proposal?",
+    "ground_truth": "s, or other relevant risks. A Third-Party Assessment Would Not Result in Better Direction or Performance for the Audit Committee While we share the stockholder\u2019s belief in the importance of robust risk oversight, particularly on issues that may \u201cimpact public well-being,\u201d we believe that an outside assessment of the Audit Committee\u2019s performance would not result in appreciably better direction or performance. The time and effort involved in such a report, especially one compiled by outside parti"
+  },
+  {
+    "question": "What position did Ms. Hudson hold at Pepsi-Cola North America from 2005 to 2007?",
+    "ground_truth": "non Group, an advisory firm focused on strategy consulting. She was president and chief executive officer of Pepsi-Cola North America, the beverage division of PepsiCo, Inc. for the U.S. and Canada, from 2005 to 2007 and president from 2002, and simultaneously served as chief executive officer of the foodservice division of PepsiCo, Inc. from 2005 to 2007. Previously, she spent 13 years in marketing, advertising and branding strategy, holding leadership positions at major agencies, such as D\u2019Arc"
+  },
+  {
+    "question": "When did Apple issue the press release regarding its third fiscal quarter results for 2020?",
+    "ground_truth": "sults for its third fiscal quarter ended June 27, 2020. A copy of Apple\u2019s press release is attached hereto as Exhibit 99.1. The information contained in this Current Report shall not be deemed \u201cfiled\u201d for purposes of Section 18 of the Securities Exchange Act of 1934, as amended (the \u201cExchange Act\u201d), or incorporated by reference in any filing under the Securities Act of 1933, as amended, or the Exchange Act, except as shall be expressly set forth by specific reference in such a filing. Item 9.01 "
+  },
+  {
+    "question": "What does Apple believe decisions by customers to purchase its hardware products depend on in part?",
+    "ground_truth": "and subject it to piracy and also could negatively affect arrangements with the Company\u2019s content providers. Apple Inc. | Q3 2017 Form 10-Q | 37 The Company\u2019s future performance depends in part on support from third-party software developers. The Company believes decisions by customers to purchase its hardware products depend in part on the availability of third-party software applications and services. There is no assurance that third-party developers will continue to develop and maintain softw"
+  },
+  {
+    "question": "How does NVIDIA recognize compensation expense for RSUs and market-based PSUs?",
+    "ground_truth": "ed on market conditions, or market-based PSUs. The compensation expense for RSUs and market-based PSUs is recognized using a straight-line attribution method over the requisite employee service period while compensation expense for PSUs is recognized using an accelerated amortization model. We estimate the fair value of shares to be issued under our employee stock purchase plan, or ESPP, using the Black-Scholes model at the commencement of an offering period in March and September of each year. "
+  },
+  {
+    "question": "How are dividend equivalents for RSUs granted under the Director Plan determined?",
+    "ground_truth": "he number of RSUs subject to each Initial Director Award is determined in the same manner as described above for Annual Director Awards, but the award is pro-rated based on the portion of the vesting period that has passed since the last annual meeting. Initial Director Awards are scheduled to vest on the next February 1 following the grant of the award, subject to continued service on the Board through the vesting date. Each RSU award granted under the Director Plan is credited with an amount e"
+  },
+  {
+    "question": "What was the total fair value of foreign exchange contracts designated as hedge instruments as of March 31, 2018?",
+    "ground_truth": "her income/(expense), net. During the three- and six-month periods ended April 1, 2017 , respectively, the Company recognized a loss of $67 million and a gain of $206 million in net sales, a loss of $253 million and a gain of $79 million in cost of sales and a loss of $76 million and a gain of $432 million in other income/(expense), net. The Company records all derivatives in the Condensed Consolidated Balance Sheets at fair value. The Company\u2019s accounting treatment for these derivative instrume"
+  },
+  {
+    "question": "By the end of fiscal year 2025, how many employees did NVIDIA have?",
+    "ground_truth": "wable energy to 76%. By the end of fiscal year 2026, we also aim to engage manufacturing suppliers comprising at least 67% of NVIDIA\u2019s scope 3 category 1 GHG emissions with the goal of effecting supplier adoption of science-based targets. Whether it is creation of technology to power next-generation laptops or designs to support high-performance supercomputers, improving energy efficiency is important in our research, development, and design processes. GPU-accelerated computing is inherently mor"
+  },
+  {
+    "question": "What is the ticker symbol for the company referenced in the text?",
+    "ground_truth": "ber 2025-01-26 0001045810 nvda:PubliclyHeldEquitySecuritiesMember 2025-01-26 0001045810 nvda:IntangibleAssetsArisingFromBusinessCombinationMember 2025-10-26 0001045810 nvda:IntangibleAssetsArisingFromBusinessCombinationMember 2025-01-26 0001045810 nvda:PatentsAndLicensedTechnologyMember 2025-10-26 0001045810 nvda:PatentsAndLicensedTechnologyMember 2025-01-26 0001045810 nvda:CustomerOneMember us-gaap:CustomerConcentrationRiskMember us-gaap:AccountsReceivableMember 2025-01-27 2025-10-26 0001045810"
+  },
+  {
+    "question": "What was the name of the company's independent registered public accounting firm for its 2018 financial statements?",
+    "ground_truth": "ration of financial statements in accordance with GAAP. The Company\u2019s independent registered public accounting firm, Ernst & Young LLP, has issued an audit report on the Company\u2019s internal control over financial reporting, which appears in Part II, Item 8 of this Form 10-K. Changes in Internal Control Over Financial Reporting There were no changes in the Company\u2019s internal control over financial reporting during the fourth quarter of 2018 , which were identified in connection with management\u2019s e"
+  },
+  {
+    "question": "When does the first installment of the time-based RSUs granted to Mr. Cook vest?",
+    "ground_truth": "ately four and one-half years, with the first installment vesting on April 1, 2026 (approximately two and one-half years following the grant date), subject to the award agreements. The number of time-based RSUs granted to Mr. Cook was determined by dividing the target value of $12.5 million by the closing stock price on the date of grant. The number of time-based RSUs granted to Ms. Adams, Mr. Maestri, Ms. O\u2019Brien, and Mr. Williams was determined by dividing the target value of $10 million by th"
+  },
+  {
+    "question": "What would be the incremental decline in the fair market value of Apple's investment portfolio as of September 29, 2018, from a hypothetical 100 basis point increase in interest rates?",
+    "ground_truth": "ssment of the interest rate risk associated with the Company\u2019s investment portfolio, the Company performed a sensitivity analysis to determine the impact a change in interest rates would have on the value of the investment portfolio assuming a 100 basis point parallel shift in the yield curve. Based on investment positions as of September 29, 2018 and September 30, 2017 , a hypothetical 100 basis point increase in interest rates across all maturities would result in a $4.9 billion and $6.0 billi"
+  },
+  {
+    "question": "As of September 28, 2019, within how many years were the Company's hedged interest rate transactions expected to be recognized?",
+    "ground_truth": "measurement gains or losses, or changes in fair value. The Company may designate these instruments as either cash flow or fair value hedges. As of September 28, 2019 , the Company\u2019s hedged term debt\u2013 and marketable securities\u2013related foreign currency transactions are expected to be recognized within 23 years . The Company may also enter into non-designated foreign currency contracts to offset a portion of the foreign currency exchange gains and losses generated by the remeasurement of certain as"
+  },
+  {
+    "question": "What was the total shareholders' equity as of September 30, 2017?",
+    "ground_truth": "(In millions, except number of shares which are reflected in thousands and per share amounts) Common Stock and Additional Paid-In Capital Retained Earnings Accumulated Other Comprehensive Income/(Loss) Total Shareholders\u2019 Equity Shares Amount Balances as of September 26, 2015 5,578,753 $ 27,416 $ 92,284 $ (345 ) $ 119,355 Net income \u2014 \u2014 45,687 \u2014 45,687 Other comprehensive income/(loss) \u2014 \u2014 \u2014 979 979 Dividends and dividend equivalents declared at $2.18 per share or RSU \u2014 \u2014 (12,188 ) \u2014 (12,188 ) R"
+  },
+  {
+    "question": "On what date did NVIDIA Corporation issue the press release announcing its results for the quarter ended July 31, 2022?",
+    "ground_truth": "or Rule 12b-2 of the Securities Exchange Act of 1934 (\u00a7240.12b-2 of this chapter). Emerging Growth Company \u2610 If an emerging growth company, indicate by check mark if the registrant has elected not to use the extended transition period for complying with any new or revised financial accounting standards provided pursuant to Section 13(a) of the Exchange Act. \u2610 Item 2.02 Results of Operations and Financial Condition. On August 24, 2022, NVIDIA Corporation, or the Company, issued a press release an"
+  },
+  {
+    "question": "What can happen if a supplier delays shipments of components to the company?",
+    "ground_truth": "n materially adversely affect its business, results of operations and financial condition. The Company\u2019s new products often utilize custom components available from only one source. When a component or product uses new technologies, initial capacity constraints may exist until the suppliers\u2019 yields have matured or their manufacturing capacities have increased. The continued availability of these components at acceptable prices, or at all, can be affected for any number of reasons, including if s"
+  },
+  {
+    "question": "What happens to participants' accumulated contributions if a surviving or acquiring corporation does not assume or continue outstanding purchase rights in a corporate transaction under the Proposed 2012 ESPP?",
+    "ground_truth": "ned in the Proposed 2012 ESPP and described below), any surviving or acquiring corporation (or its parent company) may assume or continue outstanding purchase rights or substitute similar purchase rights for outstanding purchase rights. If the surviving or acquiring corporation (or its parent company) does not assume or continue such rights or substitute similar rights, then the participants\u2019 accumulated contributions will be applied to the purchase of shares of our common stock within 10 busine"
+  },
+  {
+    "question": "What was the amount of the settlement Google reached with 40 state attorneys general over location data practices?",
+    "ground_truth": "ng their location data. Google settled one such case with 40 state attorneys general for $391.5 million, another with Arizona for $85 million, and an Illinois-based class action over violations of a state privacy law regarding misuse of Google Photos for $100 million. Rhode Island is leading a lawsuit claiming Alphabet fraudulently concealed security vulnerabilities, such as with Google+; an appellate court found a \u201cstrong inference\u201d top executives were aware of, but intentionally concealed, suc"
+  },
+  {
+    "question": "What was the case number assigned to the consolidated securities class action lawsuit against NVIDIA?",
+    "ground_truth": "s action lawsuit was filed in the United States District Court for the Northern District of California, captioned Iron Workers Joint Funds v. Nvidia Corporation, et al. (Case No. 18-cv-7669), naming as defendants NVIDIA and certain of NVIDIA\u2019s officers. On December 28, 2018, a substantially similar purported securities class action was commenced in the Northern District of California, captioned Oto v. Nvidia Corporation, et al. (Case No. 18-cv-07783), naming the same defendants, and seeking subs"
+  },
+  {
+    "question": "Where does the Company primarily locate its partners for the final assembly of its hardware products?",
+    "ground_truth": "nd experiences unanticipated product defect liabilities from time to time. While the Company relies on its partners to adhere to its supplier code of conduct, violations of the supplier code of conduct occur from time to time and can materially adversely affect the Company\u2019s business, reputation, results of operations and financial condition. The Company relies on single-source outsourcing partners in the U.S., Asia and Europe to supply and manufacture many components, and on outsourcing partner"
+  },
+  {
+    "question": "What was the date of the observable transaction that led to an increase in the fair value measurement of the company's investment?",
+    "ground_truth": "related to our investment in a private company. The unrealized gain reflects an increase in the fair value measurement of our investment following an observable transaction in January 2025. See Note 3 and Note 7 for further details on equity investments and OI&E. 89. Table of Contents Alphabet Inc. ITEM 9. CHANGES IN AND DISAGREEMENTS WITH ACCOUNTANTS ON ACCOUNTING AND FINANCIAL DISCLOSURE None. ITEM 9A. CONTROLS AND PROCEDURES Evaluation of Disclosure Controls and Procedures Our management, wit"
+  },
+  {
+    "question": "What reason does the Board give for recommending a vote against Proposal No. 7?",
+    "ground_truth": "Proposal No. 7 The Board recommends a vote AGAINST Proposal No. 7 because: \u25cf the proposal is unnecessary as Apple has a well-established corporate donations program that follows a strict internal governance and approval process, and the proposal attempts to inappropriately restrict Apple\u2019s ability to manage its own ordinary business operations and business strategies; and \u25cf our Board and management maintain active oversight of legal and regulatory risks and compliance for our global business. At"
+  },
+  {
+    "question": "How many shares of common stock did the company repurchase in 2019?",
+    "ground_truth": "hase program authorization from $ 100 billion to $ 175 billion of the Company\u2019s common stock, of which $ 96.1 billion had been utilized as of September 28, 2019 . During 2019 , the Company repurchased 345.2 million shares of its common stock for $ 67.1 billion , including 62.0 million shares delivered under a $ 12.0 billion accelerated share repurchase arrangement dated February 2019, which settled in August 2019. The Company\u2019s share repurchase program does not obligate it to acquire any specifi"
+  },
+  {
+    "question": "What are some of the devices through which people access the company's products and services?",
+    "ground_truth": "and user preferences. If manufacturers and users do not widely adopt versions of our products and services developed for these interfaces, our business could be harmed. People access our products and services through a growing variety of devices such as desktop computers, phones, laptops and tablets, video game consoles, voice-activated speakers, wearables (including virtual reality and augmented reality devices), automobiles, and television-streaming devices. Our products and services may be le"
+  },
+  {
+    "question": "What was the total cost of revenues for Alphabet Inc. in 2024?",
+    "ground_truth": "due to the U.S. dollar strengthening relative to the Japanese yen. Other Americas revenue growth was unfavorably affected by changes in foreign currency exchange rates, primarily due to the U.S. dollar strengthening relative to the Argentine peso and the Brazilian real. Costs and Expenses Cost of Revenues The following table presents cost of revenues, including TAC (in millions, except percentages): Year Ended December 31, 2023 2024 TAC $ 50,886 $ 54,900 Other cost of revenues 82,446 91,406 Tota"
+  },
+  {
+    "question": "What are some of the factors that the company states the success of new product introductions depends on?",
+    "ground_truth": "onal and design advantages. There can be no assurance the Company will be able to continue to provide products and services that compete effectively. To remain competitive and stimulate customer demand, the Company must successfully manage frequent product introductions and transitions. Due to the highly volatile and competitive nature of the industries in which the Company competes, the Company must continually introduce new products, services and technologies, enhance existing products and ser"
+  },
+  {
+    "question": "What was Apple's net income for the three months ended July 1, 2023?",
+    "ground_truth": "CONDENSED CONSOLIDATED STATEMENTS OF OPERATIONS (Unaudited) (In millions, except number of shares which are reflected in thousands and per share amounts) Three Months Ended Nine Months Ended July 1, 2023 June 25, 2022 July 1, 2023 June 25, 2022 Net sales: Products $ 60,584 $ 63,355 $ 230,901 $ 245,241 Services 21,213 19,604 62,886 58,941 Total net sales 81,797 82,959 293,787 304,182 Cost of sales: Products 39,136 41,485 146,696 155,084 Services 6,248 5,589 18,370 16,411 Total cost of sales 45,38"
+  },
+  {
+    "question": "What is the ticker symbol of the company referred to in the text?",
+    "ground_truth": "ated in Part II, Item 7 of this Form 10-K under the heading \u201cManagement\u2019s Discussion and Analysis of Financial Condition and Results of Operations.\u201d Forward-looking statements provide current expectations of future events based on certain assumptions and include any statement that does not directly relate to any historical or current fact. For example, statements in this Form 10-K regarding the potential future impact of the COVID-19 pandemic on the Company\u2019s business and results of operations a"
+  },
+  {
+    "question": "How much remained available for Class A and Class C share repurchases as of September 30, 2024?",
+    "ground_truth": "taking into account the economic cost and prevailing market conditions, including the relative trading prices and volumes of the Class A and Class C shares. During the three and nine months ended September 30, 2024, we repurchased $ 15.3 billion and $ 47.0 billion, respectively, of Alphabet's Class A and Class C shares. In April 2023, the Board of Directors of Alphabet authorized the company to repurchase up to $ 70.0 billion of its Class A and Class C shares. Repurchases made pursuant to the Ap"
+  },
+  {
+    "question": "What was the aggregate number of shares of Apple Inc. common stock beneficially owned by The Vanguard Group as of December 31, 2019?",
+    "ground_truth": "SC 13G/A 1 tv01779-appleinc.htm SCHEDULE 13G/A appleinc SECURITIES AND EXCHANGE COMMISSION Washington, D.C. 20549 Schedule 13G Under the Securities Exchange Act of 1934 (Amendment No.: 5)* Name of issuer: Apple Inc Title of Class of Securities: Common Stock CUSIP Number: 037833100 Date of Event Which Requires Filing of this Statement: December 31, 2019 Check the appropriate box to designate the rule pursuant to which this Schedule is filed: \u2612 Rule 13d-1(b) \u2610 Rule 13d-1(c) \u2610 Rule 13d-1(d) *The re"
+  },
+  {
+    "question": "What was NVIDIA's net income for the fiscal year ended January 30, 2022?",
+    "ground_truth": "INCOME (In millions, except per share data) Year Ended January 29, 2023 January 30, 2022 January 31, 2021 Revenue $ 26,974 $ 26,914 $ 16,675 Cost of revenue 11,618 9,439 6,279 Gross profit 15,356 17,475 10,396 Operating expenses Research and development 7,339 5,268 3,924 Sales, general and administrative 2,440 2,166 1,940 Acquisition termination cost 1,353 \u2014 \u2014 Total operating expenses 11,132 7,434 5,864 Income from operations 4,224 10,041 4,532 Interest income 267 29 57 Interest expense ( 262 ) "
+  },
+  {
+    "question": "What is the date on the NVIDIA Corporation Quarterly Report on Form 10-Q from which this text is excerpted?",
+    "ground_truth": "e embedded within the Inline XBRL document. 101.SCH** Inline XBRL Taxonomy Extension Schema Document 101.CAL** Inline XBRL Taxonomy Extension Calculation Linkbase Document 101.DEF** Inline XBRL Taxonomy Extension Definition Linkbase Document 101.LAB** Inline XBRL Taxonomy Extension Labels Linkbase Document 101.PRE** Inline XBRL Taxonomy Extension Presentation Linkbase Document 104 Cover Page Interactive Data File - the cover page interactive data file does not appear in the Interactive Data File"
+  },
+  {
+    "question": "What was Apple's effective tax rate for the fiscal year 2019?",
+    "ground_truth": "he foreign provision for income taxes is based on foreign pre-tax earnings of $ 38.1 billion, $ 44.3 billion and $ 48.0 billion in 2020, 2019 and 2018, respectively. A reconciliation of the provision for income taxes, with the amount computed by applying the statutory federal income tax rate ( 21 % in 2020 and 2019; 24.5 % in 2018) to income before provision for income taxes for 2020, 2019 and 2018, is as follows (dollars in millions): 2020 2019 2018 Computed expected tax $ 14,089 $ 13,805 $ 17,"
+  },
+  {
+    "question": "What was the total shareholders' equity as of January 31, 2021?",
+    "ground_truth": "1,725 1,097 Short-term debt 999 \u2014 Total current liabilities 3,925 1,784 Long-term debt 5,964 1,991 Long-term operating lease liabilities 634 561 Other long-term liabilities 1,375 775 Total liabilities 11,898 5,111 Commitments and contingencies - see Note 13 Shareholders\u2019 equity: Preferred stock, $ 0.001 par value; 2 shares authorized; none issued \u2014 \u2014 Common stock, $ 0.001 par value; 2,000 shares authorized; 965 shares issued and 620 outstanding as of January 31, 2021; 955 shares issued and 612 o"
+  },
+  {
+    "question": "How much was the company authorized to repurchase in common stock as of July 28, 2024?",
+    "ground_truth": "tion Securities Litigation action. Accounting for Loss Contingencies As of July 28, 2024, there are no accrued contingent liabilities associated with the legal proceedings described above based on our belief that liabilities, while possible, are not probable. Further, except as described above, any possible loss or range of loss in these matters cannot be reasonably estimated at this time. We are engaged in legal actions not described above arising in the ordinary course of business and, while t"
+  },
+  {
+    "question": "What is the date of the Form 8-K report signed by Luca Maestri?",
+    "ground_truth": "is Current Report on Form 8-K. SIGNATURE Pursuant to the requirements of the Securities Exchange Act of 1934, the Registrant has duly caused this report to be signed on its behalf by the undersigned hereunto duly authorized. Date: August 5, 2021 Apple Inc. By: /s/ Luca Maestri Luca Maestri Senior Vice President, Chief Financial Officer"
+  },
+  {
+    "question": "What is the aggregate principal amount of Apple's 3.250% Notes due 2026?",
+    "ground_truth": "oating Rate Notes due 2019 (the \u00932019 Floating Rate Notes\u0094), $500,000,000 aggregate principal amount of Apple\u0092s Floating Rate Notes due 2021 (the \u00932021 Floating Rate Notes,\u0094 and together with the 2019 Floating Rate Notes, the \u0093Floating Rate Notes\u0094), $500,000,000 aggregate principal amount of Apple\u0092s 1.300% Notes due 2018 (the \u00932018 Fixed Rate Notes\u0094), $1,000,000,000 aggregate principal amount of Apple\u0092s 1.700% Notes due 2019 (the \u00932019 Fixed Rate Notes\u0094), $2,250,000,000 aggregate principal amoun"
+  },
+  {
+    "question": "What was the amount of the allowance for credit losses on accounts receivable as of September 30, 2023?",
+    "ground_truth": "ing under the credit facilities as of December 31, 2022 and September 30, 2023. Note 6. Supplemental Financial Statement Information Accounts Receivable The allowance for credit losses on accounts receivable was $ 754 million and $ 832 million as of December 31, 2022 and September 30, 2023, respectively. Property and Equipment, Net Property and equipment, net, co nsisted of the following (in millions): As of December 31, 2022 As of September 30, 2023 Land and buildings $ 66,897 $ 71,357 Informat"
+  },
+  {
+    "question": "What was Apple Inc.'s net income for the three months ended December 31, 2016?",
+    "ground_truth": "finitions of \u201clarge accelerated filer,\u201d \u201caccelerated filer\u201d and \u201csmaller reporting company\u201d in Rule 12b-2 of the Exchange Act. Large accelerated filer \u2612 Accelerated filer \u2610 Non-accelerated filer \u2610 (Do not check if a smaller reporting company) Smaller reporting company \u2610 Indicate by check mark whether the Registrant is a shell company (as defined in Rule 12b-2 of the Exchange Act). Yes \u2610 No \u2612 5,246,540,000 shares of common stock, par value $0.00001 per share, issued and outstanding as of January "
+  },
+  {
+    "question": "What was Apple's net income in the second quarter of 2018?",
+    "ground_truth": "mpany\u2019s quarterly financial information for each of the four quarters of 2018 and 2017 (in millions, except per share amounts): Fourth Quarter Third Quarter Second Quarter First Quarter 2018: Net sales $ 62,900 $ 53,265 $ 61,137 $ 88,293 Gross margin $ 24,084 $ 20,421 $ 23,422 $ 33,912 Net income $ 14,125 $ 11,519 $ 13,822 $ 20,065 Earnings per share (1) : Basic $ 2.94 $ 2.36 $ 2.75 $ 3.92 Diluted $ 2.91 $ 2.34 $ 2.73 $ 3.89 Fourth Quarter Third Quarter Second Quarter First Quarter 2017: Net sal"
+  },
+  {
+    "question": "What was the basic earnings per share for Apple in 2024?",
+    "ground_truth": "less than a year, 23 % within one-to-two years, 9 % within two-to-three years and 2 % in greater than three years. Note 3 \u2013 Earnings Per Share The following table shows the computation of basic and diluted earnings per share for 2025, 2024 and 2023 (net income in millions and shares in thousands): 2025 2024 2023 Numerator: Net income $ 112,010 $ 93,736 $ 96,995 Denominator: Weighted-average basic shares outstanding 14,948,500 15,343,783 15,744,231 Effect of dilutive share-based awards 56,197 64,"
+  }
+]

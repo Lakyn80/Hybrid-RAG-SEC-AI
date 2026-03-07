@@ -1,0 +1,17 @@
+[
+  {
+    "query": "What legal risks did Apple mention in its 10-K filings?",
+    "company": "Apple Inc.",
+    "form": "10-K"
+  },
+  {
+    "query": "What supply chain risks did Apple mention?",
+    "company": "Apple Inc.",
+    "form": "10-K"
+  },
+  {
+    "query": "What regulatory risks did NVIDIA mention?",
+    "company": "NVIDIA CORP",
+    "form": "10-K"
+  }
+]

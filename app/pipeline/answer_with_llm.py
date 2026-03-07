@@ -41,7 +41,7 @@ def main() -> int:
     print(f"COMPANY_FILTER: {result['company_filter']}")
     print(f"FORM_FILTER: {result['form_filter']}")
     print(f"LLM_MODEL: {result['llm_model']}")
-    print(f"LLM_API_KEY_PRESENT: {llm_api_key_present()}")
+    print(f"DEEPSEEK_API_KEY_PRESENT: {llm_api_key_present()}")
 
     if result["cache_hit"]:
         print(f"CACHE_MODE: {result['cache_mode']}")

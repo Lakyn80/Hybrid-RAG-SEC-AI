@@ -14,9 +14,6 @@ def get_model():
 
 
 def rerank(query: str, df: pd.DataFrame, top_k: int = 5) -> pd.DataFrame:
-    """
-    Rerank výsledky retrievalu podle relevance vůči dotazu.
-    """
 
     if df.empty:
         return df

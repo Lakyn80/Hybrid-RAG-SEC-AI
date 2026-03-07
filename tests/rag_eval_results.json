@@ -1,0 +1,26 @@
+{
+  "summary": {
+    "total_queries": 3,
+    "hit_at_k": 1.0
+  },
+  "results": [
+    {
+      "query": "What legal risks did Apple mention in its 10-K filings?",
+      "expected_company": "Apple Inc.",
+      "expected_form": "10-K",
+      "hit": true
+    },
+    {
+      "query": "What risks did NVIDIA mention in its annual report?",
+      "expected_company": "NVIDIA CORP",
+      "expected_form": "10-K",
+      "hit": true
+    },
+    {
+      "query": "What proxy issues did Apple discuss?",
+      "expected_company": "Apple Inc.",
+      "expected_form": "DEF 14A",
+      "hit": true
+    }
+  ]
+}

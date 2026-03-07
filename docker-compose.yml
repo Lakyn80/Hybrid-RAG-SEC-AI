@@ -1,6 +1,13 @@
 version: "3.9"
 
 services:
+
+  redis:
+    image: redis:7-alpine
+    container_name: hybrid-rag-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
   rag-api:
     build: .
     container_name: hybrid-rag-api
@@ -10,3 +17,4 @@ services:
       - .:/app
     restart: unless-stopped
     command: uvicorn app.main:app --host 0.0.0.0 --port 8021
+

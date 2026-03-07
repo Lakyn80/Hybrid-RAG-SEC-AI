@@ -31,4 +31,5 @@ def ask(data: AskRequest):
         "answer": result["answer"],
         "mode": result["mode"],
         "sources": result["sources_text"],
+        "cache_hit": result["cache_hit"],
     }

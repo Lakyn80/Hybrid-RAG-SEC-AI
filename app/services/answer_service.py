@@ -1,15 +1,27 @@
+def limit_context_rows(results_df, max_chunks=10):
+    if results_df is None:
+        return results_df
+    return results_df.head(max_chunks)
 import os
 import re
 import json
 import time
 import hashlib
+from typing import Any, TypedDict
+
 import numpy as np
 import pandas as pd
 import faiss
-import requests
-from app.retrieval.reranker import rerank
-from dotenv import dotenv_values, load_dotenv
+from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
+from langgraph.graph import StateGraph, END
+
+from app.core.logger import get_logger
+from app.retrieval.reranker import rerank
+from app.llm.langchain_chain import run_chain
+from app.router.query_router import classify_query
+
+logger = get_logger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 ENV_FILE = os.path.join(BASE_DIR, ".env")
@@ -19,10 +31,25 @@ CACHE_DIR = os.path.join(BASE_DIR, "data", "cache")
 CACHE_FILE = os.path.join(CACHE_DIR, "answer_cache.json")
 
 load_dotenv(dotenv_path=ENV_FILE, override=False)
-DOTENV_CONFIG = dotenv_values(ENV_FILE) if os.path.exists(ENV_FILE) else {}
+# --- GLOBAL DATA LOAD (performance) ---
+_metadata_df = None
+_faiss_index = None
+
+def get_metadata_df():
+    global _metadata_df
+    if _metadata_df is None:
+        _metadata_df = pd.read_parquet(METADATA_FILE)
+    return _metadata_df
+
+def get_faiss_index():
+    global _faiss_index
+    if _faiss_index is None:
+        _faiss_index = faiss.read_index(INDEX_FILE)
+    return _faiss_index
 
 MODEL_NAME = "all-MiniLM-L6-v2"
-TOP_K = 5
+TOP_K = 10
+RETRIEVAL_CANDIDATES = 20
 MAX_FALLBACK_SENTENCES = 5
 
 LLM_CACHE_TTL_SECONDS = 60 * 60 * 24
@@ -43,26 +70,12 @@ def normalize_env_value(value: str | None) -> str:
     return str(value).strip()
 
 
-def resolve_setting(name: str, default: str = "") -> str:
-    env_value = normalize_env_value(os.getenv(name))
-    if env_value:
-        return env_value
-
-    dotenv_value = normalize_env_value(DOTENV_CONFIG.get(name))
-    if dotenv_value:
-        os.environ[name] = dotenv_value
-        return dotenv_value
-
-    return default
+LLM_API_URL = normalize_env_value(os.getenv("LLM_API_URL")) or "https://api.deepseek.com/chat/completions"
+LLM_MODEL = normalize_env_value(os.getenv("LLM_MODEL")) or "deepseek-chat"
 
 
 def llm_api_key_present() -> bool:
-    return bool(LLM_API_KEY)
-
-
-LLM_API_URL = resolve_setting("LLM_API_URL", "https://api.deepseek.com/chat/completions")
-LLM_API_KEY = resolve_setting("LLM_API_KEY", "")
-LLM_MODEL = resolve_setting("LLM_MODEL", "deepseek-chat")
+    return bool(normalize_env_value(os.getenv("DEEPSEEK_API_KEY")))
 
 
 def infer_company_filter(query: str) -> str | None:
@@ -191,6 +204,63 @@ def format_sources(results_df: pd.DataFrame) -> str:
     return "Sources:\n" + "\n".join(source_lines)
 
 
+def filters_are_active(company_filter: str | None, form_filter: str | None) -> bool:
+    return bool(str(company_filter or "").strip() or str(form_filter or "").strip())
+
+
+def apply_metadata_filters(
+    results_df: pd.DataFrame,
+    company_filter: str | None = None,
+    form_filter: str | None = None,
+) -> pd.DataFrame:
+    filtered_df = results_df.copy()
+
+    if company_filter:
+        company_value = str(company_filter).strip()
+        filtered_df = filtered_df[
+            filtered_df["company"].astype(str).str.contains(
+                company_value,
+                case=False,
+                na=False,
+                regex=False,
+            )
+        ].copy()
+
+    if form_filter:
+        form_value = str(form_filter).strip().upper()
+        filtered_df = filtered_df[
+            filtered_df["form"].astype(str).str.upper() == form_value
+        ].copy()
+
+    return filtered_df
+
+
+def finalize_results_df(
+    results_df: pd.DataFrame,
+    company_filter: str | None = None,
+    form_filter: str | None = None,
+) -> pd.DataFrame:
+    logger.info(f"retrieved_rows={len(results_df)}")
+
+    filtered_df = results_df.copy()
+
+    if company_filter:
+        filtered_df = apply_metadata_filters(filtered_df, company_filter=company_filter)
+    logger.info(f"filtered_company_rows={len(filtered_df)}")
+
+    if form_filter:
+        filtered_df = apply_metadata_filters(filtered_df, form_filter=form_filter)
+    logger.info(f"filtered_form_rows={len(filtered_df)}")
+
+    if filtered_df.empty:
+        raise ValueError("Filtered retrieval returned no rows")
+
+    filtered_df = filtered_df.drop_duplicates(subset=["chunk_text"])
+    filtered_df = limit_context_rows(filtered_df, max_chunks=10)
+    logger.info(f"final_context_rows={len(filtered_df)}")
+    return filtered_df
+
+
 def normalize_query(text: str) -> str:
     return re.sub(r"\s+", " ", str(text)).strip().lower()
 
@@ -276,6 +346,15 @@ def get_valid_cached_entry(cache_data: dict, cache_key: str) -> dict | None:
     return entry
 
 
+_embedding_model = None
+
+def get_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        _embedding_model = SentenceTransformer(MODEL_NAME)
+    return _embedding_model
+
+
 def search_rows(query: str, company_filter: str | None = None, form_filter: str | None = None) -> pd.DataFrame:
     if not os.path.exists(INDEX_FILE):
         raise FileNotFoundError("FAISS index does not exist.")
@@ -286,31 +365,8 @@ def search_rows(query: str, company_filter: str | None = None, form_filter: str 
     metadata_df = pd.read_parquet(METADATA_FILE)
     index = faiss.read_index(INDEX_FILE)
 
-    inferred_company = company_filter or infer_company_filter(query)
-    inferred_form = form_filter or infer_form_filter(query)
+    model = get_embedding_model()
 
-    filtered_df = metadata_df.copy()
-
-    if inferred_company:
-        filtered_df = filtered_df[
-            filtered_df["company"].astype(str).str.lower() == inferred_company.lower()
-        ].copy()
-
-    if inferred_form:
-        filtered_df = filtered_df[
-            filtered_df["form"].astype(str).str.lower() == inferred_form.lower()
-        ].copy()
-
-    if filtered_df.empty:
-        raise ValueError("No rows match the requested metadata filters.")
-
-    vector_ids = filtered_df["vector_id"].to_numpy(dtype="int64")
-    filtered_vectors = np.vstack([index.reconstruct(int(i)) for i in vector_ids]).astype("float32")
-
-    filtered_index = faiss.IndexFlatIP(filtered_vectors.shape[1])
-    filtered_index.add(filtered_vectors)
-
-    model = SentenceTransformer(MODEL_NAME)
     query_embedding = model.encode(
         [query],
         convert_to_numpy=True,
@@ -318,22 +374,34 @@ def search_rows(query: str, company_filter: str | None = None, form_filter: str 
     )
     query_embedding = np.asarray(query_embedding, dtype="float32")
 
-    top_k = min(TOP_K, len(filtered_df))
-    scores, indices = filtered_index.search(query_embedding, top_k)
+    search_k = 50
+    scores, indices = index.search(query_embedding, search_k)
 
     result_rows = []
-    for score, local_idx in zip(scores[0], indices[0]):
-        if local_idx < 0 or local_idx >= len(filtered_df):
+
+    for score, idx in zip(scores[0], indices[0]):
+        if idx < 0 or idx >= len(metadata_df):
             continue
 
-        row = filtered_df.iloc[int(local_idx)].copy()
+        row = metadata_df.iloc[int(idx)].copy()
         row["score"] = float(score)
         result_rows.append(row)
 
     if not result_rows:
         raise ValueError("No search results found.")
 
-    return pd.DataFrame(result_rows)
+    results_df = pd.DataFrame(result_rows)
+
+    results_df = apply_metadata_filters(
+        results_df,
+        company_filter=company_filter,
+        form_filter=form_filter,
+    )
+
+    if results_df.empty:
+        raise ValueError("No rows match the requested metadata filters.")
+
+    return results_df
 
 
 def build_context(results_df: pd.DataFrame) -> str:
@@ -406,58 +474,10 @@ def build_fallback_answer(query: str, results_df: pd.DataFrame) -> str:
     return "LLM fallback mode was used.\n\n" + "\n".join(selected) + "\n\n" + format_sources(results_df)
 
 
-from app.llm.langchain_chain import run_chain
-
 def call_llm(query: str, context: str) -> str:
     if not llm_api_key_present():
-        raise ValueError("LLM_API_KEY is not set.")
-
-    headers = {
-        "Authorization": f"Bearer {LLM_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    system_prompt = (
-        "You are a financial document analysis assistant. "
-        "Answer only from the provided SEC filing context. "
-        "If the context is insufficient, say so clearly. "
-        "Write a concise, factual answer in English. "
-        "After the answer, add a short Sources section with filing date, form, and URL."
-    )
-
-    user_prompt = (
-        f"Question:\n{query}\n\n"
-        f"Retrieved SEC filing context:\n{context}\n\n"
-        "Task:\n"
-        "1. Answer the question only from the context.\n"
-        "2. Summarize the main points clearly.\n"
-        "3. Do not invent facts.\n"
-        "4. Add a short Sources section at the end."
-    )
-
-    payload = {
-        "model": LLM_MODEL,
-        "temperature": 0.2,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    }
-
-    response = requests.post(
-        LLM_API_URL,
-        headers=headers,
-        json=payload,
-        timeout=120,
-    )
-    response.raise_for_status()
-
-    data = response.json()
-
-    try:
-        return run_chain(query, context)
-    except Exception:
-        raise ValueError(f"Unexpected LLM response format: {json.dumps(data)[:1000]}")
+        raise ValueError("DEEPSEEK_API_KEY is not set.")
+    return run_chain(query, context)
 
 
 def _build_result(
@@ -488,91 +508,324 @@ def _build_result(
     }
 
 
+class GraphState(TypedDict, total=False):
+    query: str
+    company_filter: str | None
+    form_filter: str | None
+    query_type: str
+    cache_key: str
+    cache_data: dict
+    cached_entry: dict | None
+    results_rows: list[dict[str, Any]] | None
+    context: str
+    sources_text: str
+    answer: str
+    mode: str
+    cache_hit: bool
+    cache_mode: str | None
+    retrieval_error: str | None
+    llm_error: str | None
+    llm_model: str
+
+
+def dataframe_to_records(results_df: pd.DataFrame) -> list[dict[str, Any]]:
+    if results_df.empty:
+        return []
+    return json.loads(results_df.to_json(orient="records", date_format="iso"))
+
+
+def records_to_dataframe(records: list[dict[str, Any]] | None) -> pd.DataFrame:
+    if not records:
+        return pd.DataFrame()
+    return pd.DataFrame(records)
+
+
+def node_prepare(state: GraphState) -> GraphState:
+    query = str(state["query"]).strip()
+    company_filter = state.get("company_filter") or infer_company_filter(query)
+    form_filter = state.get("form_filter") or infer_form_filter(query)
+    query_type = classify_query(query)
+    cache_data = cleanup_expired_cache(load_cache())
+    cache_key = build_cache_key(query, company_filter, form_filter)
+
+    logger.info(f"query_type={query_type}")
+
+    return {
+        "query": query,
+        "company_filter": company_filter,
+        "form_filter": form_filter,
+        "query_type": query_type,
+        "cache_data": cache_data,
+        "cache_key": cache_key,
+        "llm_model": LLM_MODEL,
+        "cache_hit": False,
+        "cache_mode": None,
+        "retrieval_error": None,
+        "llm_error": None,
+        "sources_text": "",
+        "answer": "",
+    }
+
+
+def node_cache_lookup(state: GraphState) -> GraphState:
+    if filters_are_active(state.get("company_filter"), state.get("form_filter")):
+        logger.info("cache_hit=False cache_bypass=filters")
+        return {"cached_entry": None}
+
+    cached_entry = get_valid_cached_entry(state["cache_data"], state["cache_key"])
+
+    if cached_entry:
+        logger.info(f"cache_hit=True cache_mode={cached_entry.get('mode')}")
+    else:
+        logger.info("cache_hit=False")
+
+    return {"cached_entry": cached_entry}
+
+
+def route_after_cache(state: GraphState) -> str:
+    return "cache_return" if state.get("cached_entry") else "retrieve"
+
+
+def node_cache_return(state: GraphState) -> GraphState:
+    cached_entry = state["cached_entry"]
+
+    return {
+        "mode": "cache",
+        "answer": str(cached_entry.get("answer", "")),
+        "cache_hit": True,
+        "cache_mode": str(cached_entry.get("mode", "")).strip().lower() or None,
+        "llm_model": str(cached_entry.get("llm_model") or LLM_MODEL),
+        "sources_text": str(cached_entry.get("sources_text") or ""),
+        "retrieval_error": str(cached_entry.get("retrieval_error")) if cached_entry.get("retrieval_error") else None,
+        "llm_error": str(cached_entry.get("llm_error")) if cached_entry.get("llm_error") else None,
+    }
+
+
+def node_parallel_retrieve(state: GraphState) -> GraphState:
+    try:
+        query = state["query"]
+
+        vector_df = search_rows(
+            query,
+            company_filter=state.get("company_filter"),
+            form_filter=state.get("form_filter"),
+        )
+
+        from app.retrieval.bm25_retriever import bm25_search
+        metadata_df = pd.read_parquet(METADATA_FILE)
+
+        bm25_df = bm25_search(
+            query,
+            metadata_df,
+            state.get("company_filter"),
+            state.get("form_filter"),
+        )
+
+        merged = pd.concat([vector_df, bm25_df], ignore_index=True)
+        logger.info(f"parallel_retrieval_rows={len(merged)}")
+
+        results_df = finalize_results_df(
+            merged,
+            company_filter=state.get("company_filter"),
+            form_filter=state.get("form_filter"),
+        )
+
+        return {
+            "results_rows": dataframe_to_records(results_df),
+            "retrieval_error": None,
+        }
+    except Exception as exc:
+        logger.info(f"retrieval_error={exc}")
+        return {
+            "results_rows": None,
+            "retrieval_error": str(exc),
+            "mode": "fallback",
+            "answer": "",
+            "sources_text": "",
+        }
+
+
+def node_retrieve(state: GraphState) -> GraphState:
+    try:
+        start_retrieval = time.time()
+        results_df = search_rows(
+            state["query"],
+            company_filter=state.get("company_filter"),
+            form_filter=state.get("form_filter"),
+        )
+        retrieval_ms = int((time.time() - start_retrieval) * 1000)
+        logger.info(f"retrieval_ms={retrieval_ms}")
+        logger.info(f"retrieved_rows={len(results_df)}")
+
+        if results_df.empty:
+            raise ValueError("No rows returned from retrieval.")
+
+        start_rerank = time.time()
+        results_df = rerank(state["query"], results_df, top_k=TOP_K)
+        rerank_ms = int((time.time() - start_rerank) * 1000)
+        logger.info(f"rerank_ms={rerank_ms}")
+        logger.info(f"reranked_rows={len(results_df)}")
+
+        if results_df.empty:
+            raise ValueError("No rows returned after rerank.")
+
+        return {
+            "results_rows": dataframe_to_records(results_df),
+            "retrieval_error": None,
+        }
+    except Exception as exc:
+        logger.info(f"retrieval_error={exc}")
+        return {
+            "results_rows": None,
+            "retrieval_error": str(exc),
+            "mode": "fallback",
+            "answer": "",
+            "sources_text": "",
+        }
+
+
+def route_after_retrieve(state: GraphState) -> str:
+    return "retrieval_failed" if state.get("retrieval_error") else "build_context"
+
+
+def node_retrieval_failed(state: GraphState) -> GraphState:
+    return {}
+
+
+def node_build_context(state: GraphState) -> GraphState:
+    results_df = records_to_dataframe(state.get("results_rows"))
+    context = build_context(results_df)
+    logger.info(f"context_length={len(context)}")
+    return {
+        "results_rows": dataframe_to_records(results_df),
+        "context": context,
+        "sources_text": format_sources(results_df),
+    }
+
+
+def node_llm(state: GraphState) -> GraphState:
+    try:
+        logger.info("calling_llm")
+        start_llm = time.time()
+        answer = call_llm(state["query"], state["context"])
+        llm_ms = int((time.time() - start_llm) * 1000)
+        logger.info(f"llm_ms={llm_ms}")
+
+        return {
+            "answer": answer,
+            "mode": "llm",
+            "llm_error": None,
+        }
+    except Exception as exc:
+        logger.info(f"llm_error={exc}")
+        results_df = records_to_dataframe(state.get("results_rows"))
+        return {
+            "answer": build_fallback_answer(state["query"], results_df),
+            "mode": "fallback",
+            "llm_error": str(exc),
+        }
+
+
+def node_save_cache(state: GraphState) -> GraphState:
+    if state.get("cache_hit") or state.get("retrieval_error"):
+        return state
+
+    if filters_are_active(state.get("company_filter"), state.get("form_filter")):
+        logger.info("cache_save_skipped=True cache_bypass=filters")
+        return state
+
+    cache_data = state["cache_data"]
+    cache_data[state["cache_key"]] = {
+        "query": state["query"],
+        "company_filter": state.get("company_filter"),
+        "form_filter": state.get("form_filter"),
+        "mode": state.get("mode"),
+        "llm_model": state.get("llm_model", LLM_MODEL),
+        "answer": state.get("answer", ""),
+        "sources_text": state.get("sources_text", ""),
+        "retrieval_error": state.get("retrieval_error"),
+        "llm_error": state.get("llm_error"),
+        "created_at": time.time(),
+    }
+    save_cache(cache_data)
+    return state
+
+
+_graph = None
+
+
+def get_answer_graph():
+    global _graph
+    if _graph is not None:
+        return _graph
+
+    workflow = StateGraph(GraphState)
+
+    workflow.add_node("prepare", node_prepare)
+    workflow.add_node("cache_lookup", node_cache_lookup)
+    workflow.add_node("cache_return", node_cache_return)
+    workflow.add_node("retrieve", node_parallel_retrieve)
+    workflow.add_node("retrieval_failed", node_retrieval_failed)
+    workflow.add_node("build_context", node_build_context)
+    workflow.add_node("llm", node_llm)
+    workflow.add_node("save_cache", node_save_cache)
+
+    workflow.set_entry_point("prepare")
+    workflow.add_edge("prepare", "cache_lookup")
+    workflow.add_conditional_edges(
+        "cache_lookup",
+        route_after_cache,
+        {
+            "cache_return": "cache_return",
+            "retrieve": "retrieve",
+        },
+    )
+    workflow.add_edge("cache_return", END)
+    workflow.add_conditional_edges(
+        "retrieve",
+        route_after_retrieve,
+        {
+            "retrieval_failed": "retrieval_failed",
+            "build_context": "build_context",
+        },
+    )
+    workflow.add_edge("retrieval_failed", END)
+    workflow.add_edge("build_context", "llm")
+    workflow.add_edge("llm", "save_cache")
+    workflow.add_edge("save_cache", END)
+
+    _graph = workflow.compile()
+    return _graph
+
+
 def answer_query(
     query: str,
     company_filter: str | None = None,
     form_filter: str | None = None,
 ) -> dict:
-    query = str(query).strip()
-    inferred_company = company_filter or infer_company_filter(query)
-    inferred_form = form_filter or infer_form_filter(query)
+    graph = get_answer_graph()
 
-    cache_key = build_cache_key(query, inferred_company, inferred_form)
-    cache_data = cleanup_expired_cache(load_cache())
-
-    cached_entry = get_valid_cached_entry(cache_data, cache_key)
-    if cached_entry:
-        save_cache(cache_data)
-        return _build_result(
-            query=query,
-            company_filter=inferred_company,
-            form_filter=inferred_form,
-            mode="cache",
-            answer=str(cached_entry.get("answer", "")),
-            cache_hit=True,
-            cache_mode=str(cached_entry.get("mode", "")).strip().lower() or None,
-            llm_model=str(cached_entry.get("llm_model") or LLM_MODEL),
-            sources_text=str(cached_entry.get("sources_text") or ""),
-            retrieval_error=str(cached_entry.get("retrieval_error")) if cached_entry.get("retrieval_error") else None,
-            llm_error=str(cached_entry.get("llm_error")) if cached_entry.get("llm_error") else None,
-        )
-
-    try:
-        results_df = search_rows(query, company_filter=company_filter, form_filter=form_filter)
-        results_df = rerank(query, results_df, top_k=TOP_K)
-    except Exception as exc:
-        save_cache(cache_data)
-        return _build_result(
-            query=query,
-            company_filter=inferred_company,
-            form_filter=inferred_form,
-            mode="fallback",
-            answer="",
-            cache_hit=False,
-            cache_mode=None,
-            sources_text="",
-            retrieval_error=str(exc),
-            llm_error=None,
-        )
-
-    context = build_context(results_df)
-    sources_text = format_sources(results_df)
-    llm_error = None
-
-    try:
-        answer = call_llm(query, context)
-        mode = "llm"
-    except Exception as exc:
-        llm_error = str(exc)
-        answer = build_fallback_answer(query, results_df)
-        mode = "fallback"
-
-    cache_data[cache_key] = {
+    final_state = graph.invoke({
         "query": query,
-        "company_filter": inferred_company,
-        "form_filter": inferred_form,
-        "mode": mode,
-        "llm_model": LLM_MODEL,
-        "answer": answer,
-        "sources_text": sources_text,
-        "retrieval_error": None,
-        "llm_error": llm_error,
-        "created_at": time.time(),
-    }
-    save_cache(cache_data)
+        "company_filter": company_filter,
+        "form_filter": form_filter,
+    })
+
+    if final_state.get("cache_hit"):
+        save_cache(final_state["cache_data"])
 
     return _build_result(
-        query=query,
-        company_filter=inferred_company,
-        form_filter=inferred_form,
-        mode=mode,
-        answer=answer,
-        cache_hit=False,
-        cache_mode=None,
-        llm_model=LLM_MODEL,
-        sources_text=sources_text,
-        retrieval_error=None,
-        llm_error=llm_error,
+        query=final_state["query"],
+        company_filter=final_state.get("company_filter"),
+        form_filter=final_state.get("form_filter"),
+        mode=final_state.get("mode", "fallback"),
+        answer=final_state.get("answer", ""),
+        cache_hit=bool(final_state.get("cache_hit", False)),
+        cache_mode=final_state.get("cache_mode"),
+        llm_model=final_state.get("llm_model", LLM_MODEL),
+        sources_text=final_state.get("sources_text", ""),
+        retrieval_error=final_state.get("retrieval_error"),
+        llm_error=final_state.get("llm_error"),
     )
 
 
@@ -580,6 +833,17 @@ __all__ = [
     "LLM_MODEL",
     "answer_query",
     "llm_api_key_present",
+    "get_answer_graph",
 ]
+
+
+
+
+
+
+
+
+
+
 
 
