@@ -1,5 +1,6 @@
 {
   "summary": {
+    "dataset": "tests/rag_eval_questions.json",
     "total_queries": 3,
     "hit_at_k": 1.0
   },
@@ -8,18 +9,21 @@
       "query": "What legal risks did Apple mention in its 10-K filings?",
       "expected_company": "Apple Inc.",
       "expected_form": "10-K",
+      "query_type": null,
       "hit": true
     },
     {
       "query": "What risks did NVIDIA mention in its annual report?",
       "expected_company": "NVIDIA CORP",
       "expected_form": "10-K",
+      "query_type": null,
       "hit": true
     },
     {
       "query": "What proxy issues did Apple discuss?",
       "expected_company": "Apple Inc.",
       "expected_form": "DEF 14A",
+      "query_type": null,
       "hit": true
     }
   ]

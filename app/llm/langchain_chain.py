@@ -8,20 +8,40 @@ ENV_FILE = os.path.join(BASE_DIR, ".env")
 
 load_dotenv(dotenv_path=ENV_FILE, override=False)
 
-prompt = ChatPromptTemplate.from_template(
-"""Answer the question using the context.
+prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            """You are a financial document analysis assistant specialized in SEC filings.
 
-Question:
+Your task is to answer questions strictly using the provided filing excerpts.
+
+Rules:
+
+1. Use ONLY the information explicitly stated in the context.
+2. Do NOT use external knowledge.
+3. Do NOT infer facts not present in the text.
+4. If the answer cannot be found in the context, say:
+   "The provided filings do not contain this information."
+5. Answer the question directly and concisely.
+6. Focus only on the information relevant to the question.
+7. Do not summarize unrelated sections of the filing.
+
+Answer style:
+
+- 2–4 sentences maximum
+- factual statements only
+- avoid speculation""",
+        ),
+        (
+            "human",
+            """Question:
 {question}
 
 Context:
-{context}
-
-Rules:
-- Use only the provided context
-- If information is missing say so
-- Answer concisely
-"""
+{context}""",
+        ),
+    ]
 )
 
 def normalize_base_url(raw_url: str | None) -> str | None:

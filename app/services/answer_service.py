@@ -1,7 +1,7 @@
-def limit_context_rows(results_df, max_chunks=10):
+def limit_context_rows(results_df, max_chunks=None):
     if results_df is None:
         return results_df
-    return results_df.head(max_chunks)
+    return results_df.head(max_chunks or TOP_K)
 import os
 import re
 import json
@@ -24,7 +24,7 @@ from app.retrieval.retrieval_cache import (
     write_retrieval_cache,
 )
 from app.llm.langchain_chain import run_chain
-from app.router.query_router import classify_query
+from app.router.query_router import classify_query, detect_sec_form
 from app.services.semantic_cache import lookup_semantic_cache, save_semantic_cache
 
 logger = get_logger(__name__)
@@ -39,10 +39,11 @@ CACHE_FILE = os.path.join(CACHE_DIR, "answer_cache.json")
 load_dotenv(dotenv_path=ENV_FILE, override=False)
 
 MODEL_NAME = "all-MiniLM-L6-v2"
-TOP_K = 10
+TOP_K = 6
 RETRIEVAL_CANDIDATES = 20
 VECTOR_SEARCH_K = 50
 MAX_FALLBACK_SENTENCES = 5
+MAX_ANSWER_SENTENCES = 4
 
 LLM_CACHE_TTL_SECONDS = 60 * 60 * 24
 FALLBACK_CACHE_TTL_SECONDS = 60 * 10
@@ -84,24 +85,7 @@ def infer_company_filter(query: str) -> str | None:
 
 
 def infer_form_filter(query: str) -> str | None:
-    q = query.lower()
-
-    if "annual report" in q or "10-k" in q:
-        return "10-K"
-
-    if "quarterly report" in q or "10-q" in q or "quarter report" in q:
-        return "10-Q"
-
-    if "proxy" in q or "proxy statement" in q:
-        return "DEF 14A"
-
-    if "current report" in q or "8-k" in q:
-        return "8-K"
-
-    if "ownership" in q or "beneficial ownership" in q or "13g" in q:
-        return "SC 13G/A"
-
-    return None
+    return detect_sec_form(query)
 
 
 def split_sentences(text: str) -> list[str]:
@@ -247,8 +231,13 @@ def finalize_results_df(
     if filtered_df.empty:
         raise ValueError("Filtered retrieval returned no rows")
 
+    if "rerank_score" in filtered_df.columns:
+        filtered_df = filtered_df.sort_values("rerank_score", ascending=False, kind="mergesort")
+    elif "score" in filtered_df.columns:
+        filtered_df = filtered_df.sort_values("score", ascending=False, kind="mergesort")
+
     filtered_df = filtered_df.drop_duplicates(subset=["chunk_text"])
-    filtered_df = limit_context_rows(filtered_df, max_chunks=10)
+    filtered_df = limit_context_rows(filtered_df, max_chunks=TOP_K)
     logger.info(f"final_context_rows={len(filtered_df)}")
     return filtered_df
 
@@ -401,20 +390,22 @@ def search_rows(query: str, company_filter: str | None = None, form_filter: str 
 
 
 def build_context(results_df: pd.DataFrame) -> str:
+    if "rerank_score" in results_df.columns:
+        results_df = results_df.sort_values("rerank_score", ascending=False, kind="mergesort")
+    elif "score" in results_df.columns:
+        results_df = results_df.sort_values("score", ascending=False, kind="mergesort")
+
+    results_df = limit_context_rows(results_df, max_chunks=TOP_K)
     blocks = []
 
-    for i, (_, row) in enumerate(results_df.iterrows(), start=1):
-        block = [
-            f"[SOURCE {i}]",
-            f"Company: {row['company']}",
-            f"Form: {row['form']}",
-            f"Filing date: {row['filing_date']}",
-            f"URL: {row['filing_url']}",
-            f"Score: {row['score']:.4f}",
-            "Text:",
-            str(row["chunk_text"]),
-        ]
-        blocks.append("\n".join(block))
+    for _, row in results_df.iterrows():
+        header = (
+            f"[Company: {row.get('company', '')} | "
+            f"Form: {row.get('form', '')} | "
+            f"Date: {row.get('filing_date', '')}]"
+        )
+        chunk_text = re.sub(r"\s+", " ", str(row.get("chunk_text", ""))).strip()
+        blocks.append(f"{header}\n{chunk_text}")
 
     return "\n\n".join(blocks)
 
@@ -476,6 +467,19 @@ def call_llm(query: str, context: str) -> str:
     return run_chain(query, context)
 
 
+def post_process_answer(answer: str) -> str:
+    text = str(answer or "").strip()
+    if not text:
+        return ""
+
+    text = re.sub(r"\s+", " ", text).strip()
+    sentences = split_sentences(text)
+    if sentences:
+        text = " ".join(sentences[:MAX_ANSWER_SENTENCES]).strip()
+
+    return text
+
+
 def _build_result(
     query: str,
     company_filter: str | None,
@@ -494,7 +498,7 @@ def _build_result(
         "company_filter": company_filter,
         "form_filter": form_filter,
         "mode": mode,
-        "answer": answer,
+        "answer": post_process_answer(answer),
         "cache_hit": cache_hit,
         "cache_mode": cache_mode,
         "llm_model": llm_model,
@@ -795,6 +799,7 @@ def node_retrieval_failed(state: GraphState) -> GraphState:
 
 def node_build_context(state: GraphState) -> GraphState:
     results_df = records_to_dataframe(state.get("results_rows"))
+    results_df = limit_context_rows(results_df, max_chunks=TOP_K)
     context = build_context(results_df)
     logger.info(f"context_length={len(context)}")
     return {
@@ -808,7 +813,7 @@ def node_llm(state: GraphState) -> GraphState:
     try:
         logger.info("calling_llm")
         start_llm = time.time()
-        answer = call_llm(state["query"], state["context"])
+        answer = post_process_answer(call_llm(state["query"], state["context"]))
         llm_ms = int((time.time() - start_llm) * 1000)
         logger.info(f"llm_ms={llm_ms}")
 
