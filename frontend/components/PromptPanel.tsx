@@ -1,5 +1,7 @@
 "use client";
 
+import { getPromptGuardState } from "@/lib/promptGuard";
+
 interface PromptPanelProps {
   query: string;
   isLoading: boolean;
@@ -13,6 +15,8 @@ export function PromptPanel({
   onQueryChange,
   onSubmit,
 }: PromptPanelProps) {
+  const promptGuard = getPromptGuardState(query);
+
   return (
     <section className="panel panel-accent rounded-[32px] p-5 sm:p-6">
       <div className="mb-5">
@@ -27,6 +31,17 @@ export function PromptPanel({
         Query
       </label>
 
+      <div className="mb-4 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
+        <p className="text-sm font-medium text-slate-900">
+          Ask questions about SEC filings and financial reports.
+        </p>
+        <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
+          <li>What legal risks did Apple mention in its 10-K filings?</li>
+          <li>Summarize risk factors in Tesla&apos;s annual report.</li>
+          <li>What litigation risks appear in the filings?</li>
+        </ul>
+      </div>
+
       <textarea
         id="query"
         value={query}
@@ -40,6 +55,17 @@ export function PromptPanel({
         placeholder="What legal risks did Apple mention in its 10-K filings?"
         className="h-44 w-full resize-none rounded-[26px] border border-slate-200 bg-white px-4 py-4 text-[15px] leading-7 text-slate-900 outline-none transition focus:border-brand focus:shadow-focus"
       />
+
+      {promptGuard.showWarning ? (
+        <div className="mt-4 rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-800">
+          <p className="font-medium text-amber-900">
+            This system is designed to analyze SEC filings and financial documents.
+          </p>
+          <p className="mt-1">
+            Please ask questions related to company filings or financial reports.
+          </p>
+        </div>
+      ) : null}
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
         <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">

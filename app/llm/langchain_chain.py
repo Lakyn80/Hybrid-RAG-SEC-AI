@@ -1,7 +1,7 @@
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 import os
-import asyncio
+from threading import BoundedSemaphore
 from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -9,7 +9,7 @@ ENV_FILE = os.path.join(BASE_DIR, ".env")
 
 load_dotenv(dotenv_path=ENV_FILE, override=False)
 
-LLM_SEMAPHORE = asyncio.Semaphore(2)
+LLM_SEMAPHORE = BoundedSemaphore(2)
 
 prompt = ChatPromptTemplate.from_messages(
     [
@@ -89,13 +89,10 @@ def run_chain(question: str, context: str) -> str:
 
     chain = prompt | llm
 
-    async def _invoke():
-        async with LLM_SEMAPHORE:
-            return await chain.ainvoke({
-                "question": question,
-                "context": context
-            })
-
-    response = asyncio.run(_invoke())
+    with LLM_SEMAPHORE:
+        response = chain.invoke({
+            "question": question,
+            "context": context,
+        })
 
     return response.content

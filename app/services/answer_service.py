@@ -2,6 +2,7 @@ def limit_context_rows(results_df, max_chunks=None):
     if results_df is None:
         return results_df
     return results_df.head(max_chunks or TOP_K)
+from collections import Counter
 import os
 import re
 import json
@@ -24,7 +25,15 @@ from app.retrieval.retrieval_cache import (
     write_retrieval_cache,
 )
 from app.llm.langchain_chain import run_chain
-from app.router.query_router import classify_query, detect_sec_form
+from app.router.query_router import (
+    build_multi_company_subqueries,
+    classify_query,
+    detect_companies,
+    detect_primary_company,
+    detect_sec_form,
+    extract_query_topic,
+    get_company_display_name,
+)
 from app.services.semantic_cache import lookup_semantic_cache, save_semantic_cache
 
 logger = get_logger(__name__)
@@ -39,11 +48,12 @@ CACHE_FILE = os.path.join(CACHE_DIR, "answer_cache.json")
 load_dotenv(dotenv_path=ENV_FILE, override=False)
 
 MODEL_NAME = "all-MiniLM-L6-v2"
-TOP_K = 6
-RETRIEVAL_CANDIDATES = 20
+TOP_K = 10
+RETRIEVAL_CANDIDATES = 50
 VECTOR_SEARCH_K = 50
 MAX_FALLBACK_SENTENCES = 5
 MAX_ANSWER_SENTENCES = 4
+RANKING_POLICY_VERSION = "content_rank_v2"
 
 LLM_CACHE_TTL_SECONDS = 60 * 60 * 24
 FALLBACK_CACHE_TTL_SECONDS = 60 * 10
@@ -55,6 +65,80 @@ RISK_HINT_WORDS = {
     "terrorism", "disaster", "public", "health", "privacy", "security",
     "competition", "market", "volatile", "volatility", "credit", "liquidity"
 }
+
+RANKING_STOP_WORDS = {
+    "a", "about", "according", "all", "an", "and", "annual", "any", "are", "as", "at",
+    "based", "be", "by", "company", "did", "disclose", "discussed", "documents", "does",
+    "filing", "filings", "for", "from", "how", "in", "into", "is", "its", "it", "may",
+    "mention", "mentioned", "of", "on", "or", "over", "please", "report", "reports",
+    "related", "regarding", "sec", "should", "summarize", "tell", "the", "their", "them",
+    "these", "this", "to", "what", "which", "who", "with", "would",
+}
+
+LEGAL_QUERY_TERMS = {
+    "legal", "litigation", "lawsuit", "lawsuits", "claims", "claim", "regulatory",
+    "proceedings", "proceeding", "contingencies", "contingency", "penalties",
+    "penalty", "disputes", "dispute", "intellectual", "property", "liability",
+    "liabilities", "compliance", "investigations", "investigation", "fiduciary",
+}
+
+FINANCIAL_QUERY_TERMS = {
+    "revenue", "income", "profit", "profits", "earnings", "margin", "cash", "liquidity",
+    "balance", "sheet", "assets", "liabilities", "debt", "operating", "expenses",
+    "financial", "results",
+}
+
+GOVERNANCE_QUERY_TERMS = {
+    "governance", "proxy", "board", "director", "directors", "committee",
+    "compensation", "shareholder", "shareholders", "stockholder", "stockholders",
+    "nominee", "election",
+}
+
+COMPARE_QUERY_TERMS = {
+    "compare", "difference", "differences", "versus", "vs", "between",
+}
+
+TABLE_OF_CONTENTS_PATTERNS = (
+    "table of contents",
+    "item 1. business",
+    "item 1a. risk factors",
+    "item 7. management",
+    "item 8. financial statements",
+)
+
+FORWARD_LOOKING_PATTERNS = (
+    "forward-looking statements",
+    "private securities litigation reform act",
+    "actual results could differ materially",
+    "speak only as of the date",
+    "undertake no obligation to update",
+)
+
+RISK_INTRO_PATTERNS = (
+    "we discuss many of these risks",
+    "you should read this annual report",
+    "the risks described below",
+    "any of the following risks",
+    "the order in which the risks are presented",
+)
+
+LOW_VALUE_CONTENT_BUCKETS = {
+    "table_of_contents",
+    "forward_looking_boilerplate",
+    "risk_intro",
+}
+
+CONTENT_BUCKET_LABELS = (
+    "table_of_contents",
+    "forward_looking_boilerplate",
+    "risk_intro",
+    "legal_substantive",
+    "risk_substantive",
+    "financial_substantive",
+    "mda_substantive",
+    "governance_substantive",
+    "generic",
+)
 
 PipelineEventCallback = Callable[[str], None]
 
@@ -74,16 +158,7 @@ def llm_api_key_present() -> bool:
 
 
 def infer_company_filter(query: str) -> str | None:
-    q = query.lower()
-
-    if "apple" in q:
-        return "Apple Inc."
-    if "nvidia" in q:
-        return "NVIDIA CORP"
-    if "alphabet" in q or "google" in q:
-        return "Alphabet Inc."
-
-    return None
+    return detect_primary_company(query)
 
 
 def infer_form_filter(query: str) -> str | None:
@@ -197,6 +272,413 @@ def filters_are_active(company_filter: str | None, form_filter: str | None) -> b
     return bool(str(company_filter or "").strip() or str(form_filter or "").strip())
 
 
+def build_effective_index_version(index_version: str) -> str:
+    base_version = str(index_version or "unknown").strip() or "unknown"
+    return f"{base_version}:ranking:{RANKING_POLICY_VERSION}"
+
+
+def tokenize_rank_terms(text: str) -> list[str]:
+    tokens = re.findall(r"[a-z0-9]+", str(text).lower())
+    return [
+        token for token in tokens
+        if len(token) > 2 and token not in RANKING_STOP_WORDS and not token.isdigit()
+    ]
+
+
+def tokenize_similarity_terms(text: str) -> set[str]:
+    return set(tokenize_rank_terms(text))
+
+
+def normalize_score_series(series: pd.Series) -> pd.Series:
+    numeric = pd.to_numeric(series, errors="coerce").fillna(0.0).astype(float)
+    if numeric.empty:
+        return numeric
+
+    min_value = float(numeric.min())
+    max_value = float(numeric.max())
+
+    if max_value - min_value < 1e-9:
+        if max_value <= 0:
+            return pd.Series(0.0, index=numeric.index)
+        return pd.Series(1.0, index=numeric.index)
+
+    return (numeric - min_value) / (max_value - min_value)
+
+
+def contains_any_phrase(text: str, phrases: tuple[str, ...] | set[str]) -> bool:
+    lowered = str(text).lower()
+    return any(phrase in lowered for phrase in phrases)
+
+
+def count_phrase_matches(text: str, phrases: tuple[str, ...] | set[str]) -> int:
+    lowered = str(text).lower()
+    return sum(1 for phrase in phrases if phrase in lowered)
+
+
+def detect_query_focus(query: str, query_type: str) -> dict[str, bool]:
+    tokens = set(tokenize_rank_terms(query))
+
+    return {
+        "risk": query_type == "risk" or bool(tokens & RISK_HINT_WORDS),
+        "legal": bool(tokens & LEGAL_QUERY_TERMS),
+        "financial": query_type == "financial" or bool(tokens & FINANCIAL_QUERY_TERMS),
+        "governance": bool(tokens & GOVERNANCE_QUERY_TERMS),
+        "compare": query_type == "compare" or bool(tokens & COMPARE_QUERY_TERMS),
+    }
+
+
+def build_semantic_scope(query: str, query_type: str) -> str:
+    topic = extract_query_topic(query)
+    normalized_topic = "_".join(tokenize_rank_terms(topic)[:4]) or "general_topic"
+    return f"{query_type}:{normalized_topic}"
+
+
+def classify_chunk_content(chunk_text: str) -> str:
+    text = str(chunk_text or "").lower()
+
+    if contains_any_phrase(text, TABLE_OF_CONTENTS_PATTERNS):
+        item_hits = len(re.findall(r"\bitem\s+\d+[a-z]?\b", text))
+        if item_hits >= 2 or "table of contents" in text:
+            return "table_of_contents"
+
+    if contains_any_phrase(text, FORWARD_LOOKING_PATTERNS):
+        return "forward_looking_boilerplate"
+
+    legal_hits = count_phrase_matches(
+        text,
+        {
+            "legal proceedings",
+            "we are involved in",
+            "we are engaged in",
+            "lawsuit",
+            "lawsuits",
+            "litigation",
+            "claims",
+            "claim",
+            "regulatory action",
+            "regulatory proceeding",
+            "government investigation",
+            "government investigations",
+            "intellectual property",
+            "loss contingencies",
+            "loss contingency",
+            "breach of fiduciary duty",
+            "exchange act",
+            "damages",
+            "injunctive relief",
+            "civil action",
+            "civil actions",
+        },
+    )
+    if legal_hits >= 2 or contains_any_phrase(
+        text,
+        {
+            "accounting for loss contingencies",
+            "the lawsuits assert claims",
+            "we are engaged in legal actions",
+            "intellectual property litigation",
+        },
+    ):
+        return "legal_substantive"
+
+    if contains_any_phrase(
+        text,
+        {
+            "management's discussion and analysis",
+            "results of operations",
+            "liquidity and capital resources",
+        },
+    ):
+        return "mda_substantive"
+
+    financial_hits = count_phrase_matches(
+        text,
+        {
+            "revenue",
+            "net income",
+            "operating income",
+            "gross margin",
+            "cash flow",
+            "cash flows",
+            "balance sheets",
+            "liquidity",
+            "debt",
+            "accounts receivable",
+            "inventory",
+            "fair value",
+            "operating expenses",
+        },
+    )
+    if financial_hits >= 2:
+        return "financial_substantive"
+
+    governance_hits = count_phrase_matches(
+        text,
+        {
+            "board of directors",
+            "audit committee",
+            "executive compensation",
+            "proxy statement",
+            "stockholder",
+            "shareholder",
+            "governance",
+            "director nominee",
+        },
+    )
+    if governance_hits >= 2:
+        return "governance_substantive"
+
+    if contains_any_phrase(text, RISK_INTRO_PATTERNS):
+        return "risk_intro"
+
+    risk_hits = count_phrase_matches(
+        text,
+        {
+            "risk factor",
+            "risk factors",
+            "could adversely affect",
+            "material adverse effect",
+            "subject to risks",
+            "subject to a variety of risks",
+            "could harm",
+            "uncertainties",
+            "adverse effect",
+        },
+    )
+    if risk_hits >= 2:
+        return "risk_substantive"
+
+    return "generic"
+
+
+def calculate_boilerplate_penalty(content_bucket: str, chunk_text: str) -> float:
+    penalty = 0.0
+    text = str(chunk_text or "").lower()
+
+    if content_bucket == "table_of_contents":
+        penalty += 0.60
+    if content_bucket == "forward_looking_boilerplate":
+        penalty += 0.55
+    if content_bucket == "risk_intro":
+        penalty += 0.25
+    if "available information" in text or "www." in text:
+        penalty += 0.20
+    if "annual report on form 10-k" in text and "you should read" in text:
+        penalty += 0.20
+
+    return penalty
+
+
+def calculate_query_overlap(query: str, chunk_text: str) -> float:
+    query_tokens = tokenize_similarity_terms(query)
+    if not query_tokens:
+        return 0.0
+
+    chunk_tokens = tokenize_similarity_terms(chunk_text)
+    if not chunk_tokens:
+        return 0.0
+
+    overlap = len(query_tokens & chunk_tokens) / len(query_tokens)
+    return min(max(overlap, 0.0), 1.0)
+
+
+def calculate_content_boost(
+    query_focus: dict[str, bool],
+    content_bucket: str,
+    chunk_text: str,
+) -> float:
+    boost = 0.0
+    text = str(chunk_text or "").lower()
+
+    if query_focus["risk"]:
+        if content_bucket == "risk_substantive":
+            boost += 0.18
+        if content_bucket == "legal_substantive":
+            boost += 0.20
+
+    if query_focus["legal"]:
+        if content_bucket == "legal_substantive":
+            boost += 0.28
+        elif "legal proceedings" in text or "loss contingencies" in text:
+            boost += 0.14
+
+    if query_focus["financial"]:
+        if content_bucket == "financial_substantive":
+            boost += 0.24
+        if content_bucket == "mda_substantive":
+            boost += 0.14
+
+    if query_focus["governance"]:
+        if content_bucket == "governance_substantive":
+            boost += 0.26
+
+    if query_focus["compare"] and content_bucket in {
+        "risk_substantive",
+        "legal_substantive",
+        "financial_substantive",
+        "mda_substantive",
+        "governance_substantive",
+    }:
+        boost += 0.08
+
+    if not any(query_focus.values()) and content_bucket not in LOW_VALUE_CONTENT_BUCKETS:
+        boost += 0.05
+
+    return boost
+
+
+def prepare_retrieval_source(df: pd.DataFrame, source_name: str) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    prepared = df.copy()
+    prepared["retrieval_source"] = source_name
+    prepared["raw_retrieval_score"] = pd.to_numeric(prepared.get("score", 0.0), errors="coerce").fillna(0.0)
+    prepared["retrieval_score_norm"] = normalize_score_series(prepared["raw_retrieval_score"])
+    if "chunk_hash" in prepared.columns:
+        merge_key = prepared["chunk_hash"].astype(str).str.strip()
+        prepared["merge_key"] = merge_key.where(merge_key.ne(""), prepared["chunk_text"].astype(str))
+    else:
+        prepared["merge_key"] = prepared["chunk_text"].astype(str)
+    return prepared
+
+
+def merge_retrieval_candidates(*frames: pd.DataFrame) -> pd.DataFrame:
+    prepared_frames = [frame for frame in frames if frame is not None and not frame.empty]
+    if not prepared_frames:
+        return pd.DataFrame()
+
+    merged = pd.concat(prepared_frames, ignore_index=True)
+    records: list[dict[str, Any]] = []
+
+    for _, group in merged.groupby("merge_key", sort=False):
+        ranked_group = group.sort_values(
+            by=["retrieval_score_norm", "raw_retrieval_score"],
+            ascending=[False, False],
+            kind="mergesort",
+        )
+        base_row = ranked_group.iloc[0].copy()
+        sources = sorted(set(ranked_group["retrieval_source"].astype(str).tolist()))
+        source_count = len(sources)
+        retrieval_signal = float(ranked_group["retrieval_score_norm"].max()) + (0.08 * max(source_count - 1, 0))
+
+        base_row["retrieval_source"] = "+".join(sources)
+        base_row["source_count"] = source_count
+        base_row["duplicate_count"] = int(len(ranked_group))
+        base_row["vector_score"] = float(
+            ranked_group.loc[ranked_group["retrieval_source"] == "vector", "raw_retrieval_score"].max()
+        ) if "vector" in sources else 0.0
+        base_row["bm25_score"] = float(
+            ranked_group.loc[ranked_group["retrieval_source"] == "bm25", "raw_retrieval_score"].max()
+        ) if "bm25" in sources else 0.0
+        base_row["retrieval_signal"] = min(retrieval_signal, 1.0)
+        base_row["score"] = base_row["retrieval_signal"]
+        records.append(base_row.to_dict())
+
+    return pd.DataFrame(records)
+
+
+def apply_blended_ranking(
+    results_df: pd.DataFrame,
+    query: str,
+    query_type: str,
+) -> pd.DataFrame:
+    if results_df is None or results_df.empty:
+        return results_df
+
+    ranked_df = results_df.copy()
+    ranked_df["content_bucket"] = ranked_df["chunk_text"].astype(str).apply(classify_chunk_content)
+    ranked_df["rerank_score_norm"] = normalize_score_series(ranked_df["rerank_score"])
+    ranked_df["retrieval_signal"] = pd.to_numeric(
+        ranked_df.get("retrieval_signal", ranked_df.get("score", 0.0)),
+        errors="coerce",
+    ).fillna(0.0)
+    ranked_df["retrieval_signal_norm"] = normalize_score_series(ranked_df["retrieval_signal"])
+
+    query_focus = detect_query_focus(query, query_type)
+    ranked_df["query_overlap"] = ranked_df["chunk_text"].astype(str).apply(
+        lambda text: calculate_query_overlap(query, text)
+    )
+    ranked_df["boilerplate_penalty"] = ranked_df.apply(
+        lambda row: calculate_boilerplate_penalty(str(row.get("content_bucket", "generic")), str(row.get("chunk_text", ""))),
+        axis=1,
+    )
+    ranked_df["content_boost"] = ranked_df.apply(
+        lambda row: calculate_content_boost(query_focus, str(row.get("content_bucket", "generic")), str(row.get("chunk_text", ""))),
+        axis=1,
+    )
+    ranked_df["final_score"] = (
+        (0.62 * ranked_df["rerank_score_norm"])
+        + (0.24 * ranked_df["retrieval_signal_norm"])
+        + (0.14 * ranked_df["query_overlap"])
+        + ranked_df["content_boost"]
+        - ranked_df["boilerplate_penalty"]
+    )
+    ranked_df = ranked_df.sort_values("final_score", ascending=False, kind="mergesort")
+
+    bucket_counts = Counter(ranked_df["content_bucket"].tolist())
+    logger.info(f"content_bucket_counts={json.dumps(dict(bucket_counts), sort_keys=True)}")
+    return ranked_df
+
+
+def jaccard_similarity(left: set[str], right: set[str]) -> float:
+    if not left or not right:
+        return 0.0
+    union = left | right
+    if not union:
+        return 0.0
+    return len(left & right) / len(union)
+
+
+def select_diverse_context_rows(results_df: pd.DataFrame, max_chunks: int) -> pd.DataFrame:
+    if results_df is None or results_df.empty:
+        return results_df
+
+    sorted_df = results_df.copy()
+    sort_column = "final_score" if "final_score" in sorted_df.columns else "rerank_score" if "rerank_score" in sorted_df.columns else "score"
+    sorted_df = sorted_df.sort_values(sort_column, ascending=False, kind="mergesort")
+
+    selected_rows = []
+    selected_tokens: list[set[str]] = []
+    low_value_counts: Counter[str] = Counter()
+    selected_keys: set[Any] = set()
+
+    for _, row in sorted_df.iterrows():
+        bucket = str(row.get("content_bucket", "generic"))
+        merge_key = row.get("merge_key") or row.get("chunk_hash") or row.get("chunk_text")
+        if merge_key in selected_keys:
+            continue
+
+        if bucket in LOW_VALUE_CONTENT_BUCKETS and low_value_counts[bucket] >= 1:
+            continue
+
+        token_set = tokenize_similarity_terms(str(row.get("chunk_text", "")))
+        if token_set and any(jaccard_similarity(token_set, existing) >= 0.82 for existing in selected_tokens):
+            continue
+
+        selected_rows.append(row.to_dict())
+        selected_keys.add(merge_key)
+        selected_tokens.append(token_set)
+        if bucket in LOW_VALUE_CONTENT_BUCKETS:
+            low_value_counts[bucket] += 1
+
+        if len(selected_rows) >= max_chunks:
+            break
+
+    if len(selected_rows) < max_chunks:
+        for _, row in sorted_df.iterrows():
+            merge_key = row.get("merge_key") or row.get("chunk_hash") or row.get("chunk_text")
+            if merge_key in selected_keys:
+                continue
+
+            selected_rows.append(row.to_dict())
+            selected_keys.add(merge_key)
+            if len(selected_rows) >= max_chunks:
+                break
+
+    return pd.DataFrame(selected_rows)
+
+
 def apply_metadata_filters(
     results_df: pd.DataFrame,
     company_filter: str | None = None,
@@ -244,13 +726,15 @@ def finalize_results_df(
     if filtered_df.empty:
         raise ValueError("Filtered retrieval returned no rows")
 
-    if "rerank_score" in filtered_df.columns:
+    if "final_score" in filtered_df.columns:
+        filtered_df = filtered_df.sort_values("final_score", ascending=False, kind="mergesort")
+    elif "rerank_score" in filtered_df.columns:
         filtered_df = filtered_df.sort_values("rerank_score", ascending=False, kind="mergesort")
     elif "score" in filtered_df.columns:
         filtered_df = filtered_df.sort_values("score", ascending=False, kind="mergesort")
 
     filtered_df = filtered_df.drop_duplicates(subset=["chunk_text"])
-    filtered_df = limit_context_rows(filtered_df, max_chunks=TOP_K)
+    filtered_df = select_diverse_context_rows(filtered_df, max_chunks=TOP_K)
     logger.info(f"final_context_rows={len(filtered_df)}")
     return filtered_df
 
@@ -265,6 +749,7 @@ def build_cache_key(query: str, company_filter: str | None, form_filter: str | N
         "company_filter": (company_filter or "").strip().lower(),
         "form_filter": (form_filter or "").strip().lower(),
         "llm_model": LLM_MODEL.strip().lower(),
+        "ranking_policy_version": RANKING_POLICY_VERSION,
     }
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -403,12 +888,14 @@ def search_rows(query: str, company_filter: str | None = None, form_filter: str 
 
 
 def build_context(results_df: pd.DataFrame) -> str:
-    if "rerank_score" in results_df.columns:
+    if "final_score" in results_df.columns:
+        results_df = results_df.sort_values("final_score", ascending=False, kind="mergesort")
+    elif "rerank_score" in results_df.columns:
         results_df = results_df.sort_values("rerank_score", ascending=False, kind="mergesort")
     elif "score" in results_df.columns:
         results_df = results_df.sort_values("score", ascending=False, kind="mergesort")
 
-    results_df = limit_context_rows(results_df, max_chunks=TOP_K)
+    results_df = select_diverse_context_rows(results_df, max_chunks=TOP_K)
     blocks = []
 
     for _, row in results_df.iterrows():
@@ -528,6 +1015,7 @@ class GraphState(TypedDict, total=False):
     event_callback: PipelineEventCallback | None
     observation_only: bool
     query_type: str
+    semantic_scope: str
     retrieval_backend: str
     index_version: str
     retrieval_cache_key: str
@@ -566,8 +1054,9 @@ def node_prepare(state: GraphState) -> GraphState:
     company_filter = state.get("company_filter") or infer_company_filter(query)
     form_filter = state.get("form_filter") or infer_form_filter(query)
     query_type = classify_query(query)
+    semantic_scope = build_semantic_scope(query, query_type)
     retrieval_backend = retrieval_resources.get_runtime_vector_backend()
-    index_version = retrieval_resources.get_vector_index_version()
+    index_version = build_effective_index_version(retrieval_resources.get_vector_index_version())
     retrieval_cache_key = build_retrieval_cache_key(
         query,
         company_filter,
@@ -584,12 +1073,14 @@ def node_prepare(state: GraphState) -> GraphState:
     cache_key = build_cache_key(query, company_filter, form_filter)
 
     logger.info(f"query_type={query_type}")
+    logger.info(f"semantic_scope={semantic_scope}")
 
     return {
         "query": query,
         "company_filter": company_filter,
         "form_filter": form_filter,
         "query_type": query_type,
+        "semantic_scope": semantic_scope,
         "retrieval_backend": retrieval_backend,
         "index_version": index_version,
         "retrieval_cache_key": retrieval_cache_key,
@@ -649,7 +1140,7 @@ def node_semantic_cache_lookup(state: GraphState) -> GraphState:
         state["query"],
         company_filter=state.get("company_filter"),
         form_filter=state.get("form_filter"),
-        query_type=state.get("query_type", "general"),
+        query_type=state.get("semantic_scope", state.get("query_type", "general")),
         index_version=state["index_version"],
         embedding_model_name=MODEL_NAME,
     )
@@ -721,7 +1212,9 @@ def node_parallel_retrieve(state: GraphState) -> GraphState:
             top_k=RETRIEVAL_CANDIDATES,
         )
 
-        merged = pd.concat([vector_df, bm25_df], ignore_index=True)
+        vector_candidates = prepare_retrieval_source(vector_df, "vector")
+        bm25_candidates = prepare_retrieval_source(bm25_df, "bm25")
+        merged = merge_retrieval_candidates(vector_candidates, bm25_candidates)
         logger.info(f"parallel_retrieval_rows={len(merged)}")
 
         start_rerank = time.time()
@@ -729,14 +1222,19 @@ def node_parallel_retrieve(state: GraphState) -> GraphState:
         reranked_df = rerank(
             query,
             merged,
-            top_k=min(len(merged), RETRIEVAL_CANDIDATES),
+            top_k=None,
+        )
+        ranked_df = apply_blended_ranking(
+            reranked_df,
+            query=query,
+            query_type=state.get("query_type", "general"),
         )
         rerank_ms = int((time.time() - start_rerank) * 1000)
         logger.info(f"rerank_ms={rerank_ms}")
-        logger.info(f"reranked_rows={len(reranked_df)}")
+        logger.info(f"reranked_rows={len(ranked_df)}")
 
         results_df = finalize_results_df(
-            reranked_df,
+            ranked_df,
             company_filter=state.get("company_filter"),
             form_filter=state.get("form_filter"),
         )
@@ -790,14 +1288,28 @@ def node_retrieve(state: GraphState) -> GraphState:
         if results_df.empty:
             raise ValueError("No rows returned from retrieval.")
 
+        results_df = prepare_retrieval_source(results_df, "vector")
+        results_df = merge_retrieval_candidates(results_df)
+
         start_rerank = time.time()
-        results_df = rerank(state["query"], results_df, top_k=TOP_K)
+        results_df = rerank(state["query"], results_df, top_k=None)
+        results_df = apply_blended_ranking(
+            results_df,
+            query=state["query"],
+            query_type=state.get("query_type", "general"),
+        )
         rerank_ms = int((time.time() - start_rerank) * 1000)
         logger.info(f"rerank_ms={rerank_ms}")
         logger.info(f"reranked_rows={len(results_df)}")
 
         if results_df.empty:
             raise ValueError("No rows returned after rerank.")
+
+        results_df = finalize_results_df(
+            results_df,
+            company_filter=state.get("company_filter"),
+            form_filter=state.get("form_filter"),
+        )
 
         return {
             "results_rows": dataframe_to_records(results_df),
@@ -825,7 +1337,7 @@ def node_retrieval_failed(state: GraphState) -> GraphState:
 def node_build_context(state: GraphState) -> GraphState:
     emit_pipeline_event(state, "context_build_started")
     results_df = records_to_dataframe(state.get("results_rows"))
-    results_df = limit_context_rows(results_df, max_chunks=TOP_K)
+    results_df = select_diverse_context_rows(results_df, max_chunks=TOP_K)
     context = build_context(results_df)
     logger.info(f"context_length={len(context)}")
     return {
@@ -876,7 +1388,7 @@ def node_save_semantic_cache(state: GraphState) -> GraphState:
         sources_text=state.get("sources_text", ""),
         company_filter=state.get("company_filter"),
         form_filter=state.get("form_filter"),
-        query_type=state.get("query_type", "general"),
+        query_type=state.get("semantic_scope", state.get("query_type", "general")),
         llm_model=state.get("llm_model", LLM_MODEL),
         index_version=state["index_version"],
         results_rows=state.get("results_rows"),
@@ -975,7 +1487,7 @@ def get_answer_graph():
     return _graph
 
 
-def answer_query(
+def _answer_single_query(
     query: str,
     company_filter: str | None = None,
     form_filter: str | None = None,
@@ -1014,6 +1526,126 @@ def answer_query(
         sources_text=final_state.get("sources_text", ""),
         retrieval_error=final_state.get("retrieval_error"),
         llm_error=final_state.get("llm_error"),
+    )
+
+
+def combine_multi_company_answers(
+    original_query: str,
+    company_results: list[dict[str, Any]],
+    form_filter: str | None,
+) -> dict:
+    answer_blocks = []
+    source_lines = ["Sources:"]
+    seen_source_lines: set[str] = set()
+    mode = "cache"
+    cache_hit = True
+    llm_model = LLM_MODEL
+    retrieval_errors: list[str] = []
+    llm_errors: list[str] = []
+
+    for result in company_results:
+        company_name = str(result.get("company_filter") or "").strip() or "Unknown company"
+        display_name = get_company_display_name(company_name)
+        answer_text = str(result.get("answer") or "").strip() or "The provided filings do not contain this information."
+
+        answer_blocks.append(
+            f"Company: {display_name}\nAnswer: {answer_text}"
+        )
+
+        llm_model = str(result.get("llm_model") or llm_model)
+        cache_hit = cache_hit and bool(result.get("cache_hit", False))
+
+        result_mode = str(result.get("mode") or "").strip().lower()
+        if result_mode == "fallback":
+            mode = "fallback"
+        elif result_mode == "llm" and mode != "fallback":
+            mode = "llm"
+
+        retrieval_error = result.get("retrieval_error")
+        if retrieval_error:
+            retrieval_errors.append(f"{display_name}: {retrieval_error}")
+
+        llm_error = result.get("llm_error")
+        if llm_error:
+            llm_errors.append(f"{display_name}: {llm_error}")
+
+        sources_text = str(result.get("sources_text") or "").splitlines()
+        for line in sources_text:
+            stripped = line.strip()
+            if not stripped or stripped == "Sources:":
+                continue
+            labeled_line = f"- {display_name} :: {stripped.lstrip('-').strip()}"
+            if labeled_line in seen_source_lines:
+                continue
+            seen_source_lines.add(labeled_line)
+            source_lines.append(labeled_line)
+
+    if len(source_lines) == 1:
+        source_lines.append("- No sources available.")
+
+    aggregated = _build_result(
+        query=original_query,
+        company_filter=None,
+        form_filter=form_filter,
+        mode=mode,
+        answer="\n\n".join(answer_blocks),
+        cache_hit=cache_hit,
+        cache_mode="multi" if cache_hit else None,
+        llm_model=llm_model,
+        sources_text="\n".join(source_lines),
+        retrieval_error=" | ".join(retrieval_errors) if retrieval_errors else None,
+        llm_error=" | ".join(llm_errors) if llm_errors else None,
+    )
+    aggregated["answer"] = "\n\n".join(answer_blocks)
+    return aggregated
+
+
+def answer_query(
+    query: str,
+    company_filter: str | None = None,
+    form_filter: str | None = None,
+    event_callback: PipelineEventCallback | None = None,
+    observation_only: bool = False,
+) -> dict:
+    effective_form_filter = form_filter or detect_sec_form(query)
+
+    if company_filter is None:
+        detected_companies = detect_companies(query)
+        if len(detected_companies) > 1:
+            logger.info(f"multi_company_query companies={detected_companies}")
+            subqueries = build_multi_company_subqueries(
+                query,
+                detected_companies,
+                form_filter=effective_form_filter,
+            )
+            company_results = []
+
+            for item in subqueries:
+                company_name = item["company"]
+                subquery = item["subquery"]
+                logger.info(f"multi_company_subquery company={company_name} subquery={subquery}")
+                company_results.append(
+                    _answer_single_query(
+                        query=subquery,
+                        company_filter=company_name,
+                        form_filter=effective_form_filter,
+                        event_callback=event_callback,
+                        observation_only=observation_only,
+                    )
+                )
+
+            return combine_multi_company_answers(
+                original_query=query,
+                company_results=company_results,
+                form_filter=effective_form_filter,
+            )
+
+    return _answer_single_query(
+        query=query,
+        company_filter=company_filter,
+        form_filter=effective_form_filter,
+        event_callback=event_callback,
+        observation_only=observation_only,
     )
 
 

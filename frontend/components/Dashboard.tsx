@@ -7,13 +7,23 @@ import { ExecutionLog } from "@/components/ExecutionLog";
 import { PipelineVisualizer } from "@/components/PipelineVisualizer";
 import { PromptPanel } from "@/components/PromptPanel";
 import { QueryHistory } from "@/components/QueryHistory";
+import { RagPipelineGraph } from "@/components/RagPipelineGraph";
 import { useAskPipeline } from "@/hooks/useAskPipeline";
 
 const DEFAULT_QUERY = "What legal risks did Apple mention in its 10-K filings?";
 
 export function Dashboard() {
   const [query, setQuery] = useState(DEFAULT_QUERY);
-  const { run, history, submitQuery } = useAskPipeline();
+  const {
+    activeHistoryId,
+    clearHistory,
+    deleteHistoryEntry,
+    history,
+    restoreHistoryEntry,
+    rerunHistoryEntry,
+    run,
+    submitQuery,
+  } = useAskPipeline();
 
   const handleSubmit = async (value?: string) => {
     const nextQuery = (value ?? query).trim();
@@ -58,10 +68,27 @@ export function Dashboard() {
             }}
           />
           <QueryHistory
-            activeQuery={run.query}
+            activeHistoryId={activeHistoryId}
             history={history}
-            onSelect={(selectedQuery) => {
-              void handleSubmit(selectedQuery);
+            onClearAll={() => {
+              clearHistory();
+            }}
+            onDelete={(entryId) => {
+              deleteHistoryEntry(entryId);
+            }}
+            onRestore={(entryId) => {
+              const restoredEntry = restoreHistoryEntry(entryId);
+              if (restoredEntry) {
+                setQuery(restoredEntry.query);
+              }
+            }}
+            onRunAgain={(entryId) => {
+              const entry = history.find((item) => item.id === entryId);
+              if (entry) {
+                setQuery(entry.query);
+              }
+
+              void rerunHistoryEntry(entryId);
             }}
           />
         </div>
@@ -69,6 +96,11 @@ export function Dashboard() {
         <div className="grid min-h-[720px] gap-6 lg:grid-rows-[auto_minmax(0,1fr)_auto]">
           <PipelineVisualizer
             isLoading={run.isLoading}
+            status={run.streamStatus}
+            steps={run.steps}
+          />
+          <RagPipelineGraph
+            observedStreamEvents={run.observedStreamEvents}
             status={run.streamStatus}
             steps={run.steps}
           />

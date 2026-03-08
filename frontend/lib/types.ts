@@ -76,4 +76,5 @@ export interface HistoryEntry {
   mode?: string;
   cacheHit?: boolean;
   status: "success" | "error";
+  snapshot: RunState;
 }

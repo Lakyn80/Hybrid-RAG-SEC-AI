@@ -22,8 +22,17 @@ class DetectSecFormTests(unittest.TestCase):
             "DEF 14A",
         )
 
-    def test_quarterly_filing_does_not_force_10q(self) -> None:
-        self.assertIsNone(detect_sec_form("What did Apple report in its quarterly filing?"))
+    def test_annual_report_maps_to_10k(self) -> None:
+        self.assertEqual(
+            detect_sec_form("What risks are mentioned in Apple's annual report?"),
+            "10-K",
+        )
+
+    def test_quarterly_report_maps_to_10q(self) -> None:
+        self.assertEqual(
+            detect_sec_form("What did Apple report in its quarterly report?"),
+            "10-Q",
+        )
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ def get_model():
     return _model
 
 
-def rerank(query: str, df: pd.DataFrame, top_k: int = 5) -> pd.DataFrame:
+def rerank(query: str, df: pd.DataFrame, top_k: int | None = 5) -> pd.DataFrame:
 
     if df.empty:
         return df
@@ -26,6 +26,9 @@ def rerank(query: str, df: pd.DataFrame, top_k: int = 5) -> pd.DataFrame:
     df = df.copy()
     df["rerank_score"] = scores
 
-    df = df.sort_values("rerank_score", ascending=False)
+    df = df.sort_values("rerank_score", ascending=False, kind="mergesort")
+
+    if top_k is None:
+        return df
 
     return df.head(top_k)
