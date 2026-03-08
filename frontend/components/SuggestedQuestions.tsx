@@ -19,7 +19,7 @@ export function SuggestedQuestions({ onSelect }: SuggestedQuestionsProps) {
 
     try {
       const response = await getQuestionBank();
-      setQuestions(response.questions.slice(0, 12));
+      setQuestions(response.questions);
     } catch (loadError) {
       setError(
         loadError instanceof Error
