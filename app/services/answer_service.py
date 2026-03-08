@@ -1243,6 +1243,10 @@ def node_prepare(state: GraphState) -> GraphState:
 
 
 def node_cache_lookup(state: GraphState) -> GraphState:
+    if state.get("observation_only"):
+        logger.info("cache_hit=False cache_bypass=observation")
+        return {"cached_entry": None}
+
     if filters_are_active(state.get("company_filter"), state.get("form_filter")):
         logger.info("cache_hit=False cache_bypass=filters")
         return {"cached_entry": None}
@@ -1280,6 +1284,12 @@ def node_cache_return(state: GraphState) -> GraphState:
 
 
 def node_semantic_cache_lookup(state: GraphState) -> GraphState:
+    if state.get("observation_only"):
+        logger.info("semantic_cache_hit=False cache_bypass=observation")
+        return {
+            "semantic_cached_entry": None,
+        }
+
     semantic_entry = lookup_semantic_cache(
         state["query"],
         company_filter=state.get("company_filter"),
@@ -1325,7 +1335,7 @@ def node_parallel_retrieve(state: GraphState) -> GraphState:
         retrieval_cache_key = state["retrieval_cache_key"]
         observation_only = bool(state.get("observation_only", False))
 
-        cached_retrieval = read_retrieval_cache(retrieval_cache_key)
+        cached_retrieval = None if observation_only else read_retrieval_cache(retrieval_cache_key)
         if cached_retrieval and cached_retrieval.get("rows"):
             logger.info("retrieval_cache_hit=True")
             return {
@@ -1334,7 +1344,10 @@ def node_parallel_retrieve(state: GraphState) -> GraphState:
                 "retrieval_cache_hit": True,
             }
 
-        logger.info("retrieval_cache_hit=False")
+        if observation_only:
+            logger.info("retrieval_cache_hit=False cache_bypass=observation")
+        else:
+            logger.info("retrieval_cache_hit=False")
         start_retrieval = time.time()
         emit_pipeline_event(state, "embedding_created")
         emit_pipeline_event(state, "hybrid_retrieval_started")

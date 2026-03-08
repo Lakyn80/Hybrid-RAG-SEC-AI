@@ -100,6 +100,8 @@ export function Dashboard() {
             steps={run.steps}
           />
           <RagPipelineGraph
+            isLoading={run.isLoading}
+            logs={run.logs}
             observedStreamEvents={run.observedStreamEvents}
             status={run.streamStatus}
             steps={run.steps}

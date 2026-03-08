@@ -328,6 +328,23 @@ export function useAskPipeline() {
   }, [history]);
 
   useEffect(() => {
+    if (!activeHistoryId) {
+      return;
+    }
+
+    setHistory((previousHistory) =>
+      previousHistory.map((entry) => {
+        if (entry.id !== activeHistoryId) {
+          return entry;
+        }
+
+        const status: HistoryEntry["status"] = run.error ? "error" : entry.status;
+        return buildHistoryEntry(activeHistoryId, run, status);
+      }),
+    );
+  }, [activeHistoryId, run]);
+
+  useEffect(() => {
     setRun((previousRun) => {
       if (!previousRun.isLoading && !previousRun.isStreaming) {
         return previousRun;
@@ -523,20 +540,30 @@ export function useAskPipeline() {
           return;
         }
 
-        close();
-
         let historyEntry: HistoryEntry | null = null;
         setRun((previousRun) => {
+          const streamStillActive =
+            hasOpenedStreamRef.current ||
+            previousRun.streamStatus === "open" ||
+            previousRun.streamStatus === "connecting";
+
           const nextRun: RunState = {
             ...previousRun,
             query: trimmedQuery,
             answer,
             error: null,
             isLoading: false,
-            isStreaming: false,
-            streamStatus: observedStreamEventRef.current ? "closed" : "fallback",
+            isStreaming: streamStillActive,
+            streamStatus: streamStillActive
+              ? previousRun.streamStatus
+              : observedStreamEventRef.current
+                ? "closed"
+                : "fallback",
             observedStreamEvents: observedStreamEventRef.current,
-            steps: finalizeSteps(previousRun.steps, observedStreamEventRef.current),
+            steps:
+              answer.mode === "cache" && !observedStreamEventRef.current
+                ? finalizeSteps(previousRun.steps, false)
+                : previousRun.steps,
             logs: [
               ...previousRun.logs,
               createLogEntry(
@@ -551,6 +578,10 @@ export function useAskPipeline() {
           historyEntry = buildHistoryEntry(runId, nextRun, "success");
           return nextRun;
         });
+
+        if (!hasOpenedStreamRef.current && !observedStreamEventRef.current) {
+          close();
+        }
 
         if (historyEntry) {
           addHistory(historyEntry);

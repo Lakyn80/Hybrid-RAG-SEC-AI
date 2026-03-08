@@ -24,10 +24,16 @@ export function buildStreamUrl(query: string) {
 export function openPipelineStream(query: string, handlers: StreamHandlers) {
   const eventSource = new EventSource(buildStreamUrl(query));
   let hasOpened = false;
+  let closedByClient = false;
 
   const handleMessage = (event: MessageEvent<string>) => {
     const normalized = mapBackendEvent(event.data);
     handlers.onEvent?.(normalized);
+
+    if (normalized.terminal && !closedByClient) {
+      closedByClient = true;
+      eventSource.close();
+    }
   };
 
   eventSource.onopen = () => {
@@ -44,6 +50,9 @@ export function openPipelineStream(query: string, handlers: StreamHandlers) {
   });
 
   eventSource.onerror = (event) => {
+    if (closedByClient) {
+      return;
+    }
     handlers.onError?.(event, { hasOpened });
   };
 
