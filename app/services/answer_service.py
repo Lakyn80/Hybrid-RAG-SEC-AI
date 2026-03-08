@@ -259,6 +259,13 @@ def format_sources(results_df: pd.DataFrame) -> str:
 
 
 def emit_pipeline_event(state: "GraphState", event_name: str) -> None:
+    try:
+        from app.services.stream_service import publish_pipeline_event
+
+        publish_pipeline_event(state.get("query", ""), str(event_name).strip())
+    except Exception as exc:
+        logger.info(f"stream_event_publish_failed={exc}")
+
     callback = state.get("event_callback")
     if not callable(callback):
         return

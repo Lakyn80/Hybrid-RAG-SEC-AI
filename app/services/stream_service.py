@@ -1,17 +1,21 @@
 import asyncio
-import contextlib
 from collections.abc import AsyncGenerator
 
 from fastapi.responses import StreamingResponse
 
 from app.core.logger import get_logger
-from app.services.answer_service import answer_query
+from app.retrieval.resources import get_redis_client
 
 
 logger = get_logger(__name__)
 
 TERMINAL_EVENTS = {"answer_generated", "error"}
 HEARTBEAT_INTERVAL_SECONDS = 10.0
+STREAM_CHANNEL_PREFIX = "pipeline_stream"
+
+
+def normalize_stream_key(query: str) -> str:
+    return " ".join(str(query or "").strip().lower().split())
 
 
 def format_sse_event(event_name: str) -> str:
@@ -22,56 +26,39 @@ def format_sse_comment(comment: str = "keep-alive") -> str:
     return f": {comment}\n\n"
 
 
-async def _run_observed_query(
-    query: str,
-    queue: asyncio.Queue[str],
-) -> None:
-    loop = asyncio.get_running_loop()
-    seen_terminal = False
+def build_stream_channel(query: str) -> str:
+    return f"{STREAM_CHANNEL_PREFIX}:{normalize_stream_key(query)}"
 
-    def emit_event(event_name: str) -> None:
-        nonlocal seen_terminal
-        normalized_event = str(event_name).strip()
-        if not normalized_event:
-            return
-        if normalized_event in TERMINAL_EVENTS:
-            seen_terminal = True
-        loop.call_soon_threadsafe(queue.put_nowait, normalized_event)
+
+def publish_pipeline_event(query: str, event_name: str) -> None:
+    normalized_event = str(event_name or "").strip()
+    if not normalized_event:
+        return
 
     try:
-        await asyncio.to_thread(
-            answer_query,
-            query,
-            None,
-            None,
-            emit_event,
-            True,
-        )
-        if not seen_terminal:
-            emit_event("answer_generated")
+        get_redis_client().publish(build_stream_channel(query), normalized_event)
     except Exception as exc:
-        logger.info(f"stream_observer_error={exc}")
-        if not seen_terminal:
-            emit_event("error")
+        logger.info(f"stream_publish_failed={exc}")
 
 
 async def stream_pipeline(query: str) -> AsyncGenerator[str, None]:
-    queue: asyncio.Queue[str] = asyncio.Queue()
-    observer_task = asyncio.create_task(_run_observed_query(query, queue))
+    pubsub = get_redis_client().pubsub(ignore_subscribe_messages=True)
+    channel = build_stream_channel(query)
+    pubsub.subscribe(channel)
 
     try:
         while True:
-            try:
-                event_name = await asyncio.wait_for(
-                    queue.get(),
-                    timeout=HEARTBEAT_INTERVAL_SECONDS,
-                )
-            except asyncio.TimeoutError:
-                if observer_task.done() and queue.empty():
-                    break
+            message = await asyncio.to_thread(
+                pubsub.get_message,
+                True,
+                HEARTBEAT_INTERVAL_SECONDS,
+            )
+
+            if message is None:
                 yield format_sse_comment()
                 continue
 
+            event_name = str(message.get("data") or "").strip()
             if not event_name:
                 continue
 
@@ -80,16 +67,19 @@ async def stream_pipeline(query: str) -> AsyncGenerator[str, None]:
             if event_name in TERMINAL_EVENTS:
                 break
     except asyncio.CancelledError:
-        observer_task.cancel()
         raise
     except Exception as exc:
         logger.info(f"stream_generator_error={exc}")
         yield format_sse_event("error")
     finally:
-        if not observer_task.done():
-            observer_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await observer_task
+        try:
+            pubsub.unsubscribe(channel)
+        except Exception:
+            pass
+        try:
+            pubsub.close()
+        except Exception:
+            pass
 
 
 def create_streaming_response(query: str) -> StreamingResponse:
