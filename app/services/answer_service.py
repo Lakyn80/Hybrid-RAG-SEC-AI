@@ -653,6 +653,55 @@ def merge_retrieval_candidates(*frames: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
+def build_chunk_preview(chunk_text: str, max_length: int = 180) -> str:
+    preview = re.sub(r"\s+", " ", str(chunk_text or "")).strip()
+    if len(preview) <= max_length:
+        return preview
+    return preview[: max_length - 3].rstrip() + "..."
+
+
+def safe_round_score(value: Any) -> float:
+    numeric = pd.to_numeric(value, errors="coerce")
+    if pd.isna(numeric):
+        return 0.0
+    return round(float(numeric), 4)
+
+
+def log_top_chunk_scores(results_df: pd.DataFrame, label: str, limit: int = 5) -> None:
+    if results_df is None or results_df.empty:
+        logger.info(f"{label}=[]")
+        return
+
+    sort_columns = [
+        column
+        for column in ("final_score", "rerank_score", "retrieval_signal", "score")
+        if column in results_df.columns
+    ]
+    sorted_df = results_df.sort_values(
+        by=sort_columns or ["chunk_text"],
+        ascending=[False] * len(sort_columns) if sort_columns else [True],
+        kind="mergesort",
+    )
+
+    entries: list[dict[str, Any]] = []
+    for _, row in sorted_df.head(limit).iterrows():
+        entry = {
+            "company": str(row.get("company", "")),
+            "form": str(row.get("form", "")),
+            "filing_date": str(row.get("filing_date", "")),
+            "content_bucket": str(row.get("content_bucket", "")),
+            "retrieval_source": str(row.get("retrieval_source", "")),
+            "score": safe_round_score(row.get("score", 0.0)),
+            "retrieval_signal": safe_round_score(row.get("retrieval_signal", 0.0)),
+            "rerank_score": safe_round_score(row.get("rerank_score", 0.0)),
+            "final_score": safe_round_score(row.get("final_score", 0.0)),
+            "chunk_preview": build_chunk_preview(str(row.get("chunk_text", ""))),
+        }
+        entries.append(entry)
+
+    logger.info(f"{label}={json.dumps(entries, ensure_ascii=False)}")
+
+
 def apply_blended_ranking(
     results_df: pd.DataFrame,
     query: str,
@@ -703,6 +752,7 @@ def apply_blended_ranking(
 
     bucket_counts = Counter(ranked_df["content_bucket"].tolist())
     logger.info(f"content_bucket_counts={json.dumps(dict(bucket_counts), sort_keys=True)}")
+    log_top_chunk_scores(ranked_df, "top_chunks_ranked", limit=8)
     return ranked_df
 
 
@@ -821,6 +871,7 @@ def finalize_results_df(
     filtered_df = filtered_df.drop_duplicates(subset=["chunk_text"])
     filtered_df = select_diverse_context_rows(filtered_df, max_chunks=TOP_K)
     logger.info(f"final_context_rows={len(filtered_df)}")
+    log_top_chunk_scores(filtered_df, "top_chunks_context", limit=min(TOP_K, 10))
     return filtered_df
 
 
