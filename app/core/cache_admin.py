@@ -7,6 +7,7 @@ REDIS_CACHE_PREFIXES = (
     "retrieval:v2",
     "semantic:v1:bucket",
     "semantic:v1:entry",
+    "question_bank_v1",
     "stats:retrieval_cache",
     "stats:semantic_cache",
     "stats:answer_cache",

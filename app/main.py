@@ -1,18 +1,60 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from app.api.cache_admin import router as cache_admin_router
+from app.api.question_bank import router as question_bank_router
+from app.core.logger import get_logger
+from app.retrieval import resources as retrieval_resources
+from app.retrieval.qdrant_store import get_qdrant_client, get_runtime_collection_name
+from app.retrieval.reranker import get_model as get_reranker_model
 from app.router.stream_router import router as stream_router
 from app.services.answer_service import answer_query
 
+logger = get_logger(__name__)
 
 app = FastAPI(title="Hybrid RAG SEC AI")
 app.include_router(stream_router)
+app.include_router(question_bank_router)
+app.include_router(cache_admin_router)
 
 
 class AskRequest(BaseModel):
     query: str
     company: str | None = None
     form: str | None = None
+
+
+@app.on_event("startup")
+def startup_warmup():
+    try:
+        retrieval_resources.get_metadata_df()
+        logger.info("startup_warmup=metadata_ready")
+    except Exception as exc:
+        logger.info("startup_warmup_metadata_failed=%s", exc)
+
+    try:
+        retrieval_resources.get_embedding_model()
+        logger.info("startup_warmup=embedding_ready")
+    except Exception as exc:
+        logger.info("startup_warmup_embedding_failed=%s", exc)
+
+    try:
+        get_reranker_model()
+        logger.info("startup_warmup=reranker_ready")
+    except Exception as exc:
+        logger.info("startup_warmup_reranker_failed=%s", exc)
+
+    try:
+        retrieval_resources.get_redis_client().ping()
+        logger.info("startup_warmup=redis_ready")
+    except Exception as exc:
+        logger.info("startup_warmup_redis_failed=%s", exc)
+
+    try:
+        get_qdrant_client().get_collection(get_runtime_collection_name())
+        logger.info("startup_warmup=qdrant_ready")
+    except Exception as exc:
+        logger.info("startup_warmup_qdrant_failed=%s", exc)
 
 
 @app.get("/api/health")

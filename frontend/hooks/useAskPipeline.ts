@@ -138,11 +138,27 @@ function appendHistoryEntry(history: HistoryEntry[], entry: HistoryEntry) {
   return [entry, ...history].slice(0, HISTORY_LIMIT);
 }
 
+function upsertHistoryEntry(history: HistoryEntry[], entry: HistoryEntry) {
+  const existingIndex = history.findIndex((item) => item.id === entry.id);
+  if (existingIndex < 0) {
+    return appendHistoryEntry(history, entry);
+  }
+
+  const nextHistory = [...history];
+  nextHistory[existingIndex] = entry;
+  return nextHistory;
+}
+
 function createLegacySnapshot(rawEntry: Record<string, unknown>): RunState {
   const query = typeof rawEntry.query === "string" ? rawEntry.query : "";
   const createdAt =
     typeof rawEntry.createdAt === "string" ? rawEntry.createdAt : new Date().toISOString();
-  const status = rawEntry.status === "error" ? "error" : "success";
+  const status =
+    rawEntry.status === "pending"
+      ? "pending"
+      : rawEntry.status === "error"
+        ? "error"
+        : "success";
   const answerText = typeof rawEntry.answer === "string" ? rawEntry.answer : "";
   const mode = typeof rawEntry.mode === "string" ? rawEntry.mode : "history";
   const cacheHit = typeof rawEntry.cacheHit === "boolean" ? rawEntry.cacheHit : false;
@@ -260,7 +276,12 @@ function coerceHistoryEntry(value: unknown): HistoryEntry | null {
         : snapshot.answer?.answer,
     mode,
     cacheHit,
-    status: rawEntry.status === "error" ? "error" : "success",
+    status:
+      rawEntry.status === "pending"
+        ? "pending"
+        : rawEntry.status === "error"
+          ? "error"
+          : "success",
     snapshot,
   };
 }
@@ -366,7 +387,7 @@ export function useAskPipeline() {
   }, []);
 
   const addHistory = useCallback((entry: HistoryEntry) => {
-    setHistory((previousHistory) => appendHistoryEntry(previousHistory, entry));
+    setHistory((previousHistory) => upsertHistoryEntry(previousHistory, entry));
     setActiveHistoryId(entry.id);
   }, []);
 
@@ -433,13 +454,14 @@ export function useAskPipeline() {
         typeof crypto !== "undefined" && "randomUUID" in crypto
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const startedAt = new Date().toISOString();
 
       activeRunIdRef.current = runId;
       hasOpenedStreamRef.current = false;
       observedStreamEventRef.current = false;
-      setActiveHistoryId(null);
+      setActiveHistoryId(runId);
 
-      setRun({
+      const initialRun: RunState = {
         query: trimmedQuery,
         steps: markPromptActive(createInitialSteps()),
         logs: [
@@ -455,9 +477,12 @@ export function useAskPipeline() {
         isLoading: true,
         isStreaming: true,
         streamStatus: "connecting",
-        startedAt: new Date().toISOString(),
+        startedAt,
         observedStreamEvents: false,
-      });
+      };
+
+      setRun(initialRun);
+      addHistory(buildHistoryEntry(runId, initialRun, "pending"));
 
       connect(trimmedQuery, {
         onOpen: () => {

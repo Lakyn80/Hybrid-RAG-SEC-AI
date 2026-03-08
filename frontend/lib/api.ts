@@ -1,4 +1,9 @@
-import { AskRequest, AskResponse } from "@/lib/types";
+import {
+  AskRequest,
+  AskResponse,
+  CacheClearResponse,
+  QuestionBankResponse,
+} from "@/lib/types";
 
 function delay(ms: number) {
   return new Promise((resolve) => {
@@ -41,4 +46,46 @@ export async function askQuestion(payload: AskRequest): Promise<AskResponse> {
   }
 
   throw lastError ?? new Error("Backend request failed.");
+}
+
+export async function clearSystemCache(): Promise<CacheClearResponse> {
+  const response = await fetch("/api/cache/clear", {
+    method: "POST",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Cache clear failed with status ${response.status}.`);
+  }
+
+  return (await response.json()) as CacheClearResponse;
+}
+
+export async function getQuestionBank(): Promise<QuestionBankResponse> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => {
+    controller.abort();
+  }, 180000);
+
+  try {
+    const response = await fetch("/api/question-bank", {
+      method: "GET",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Question bank request failed with status ${response.status}.`);
+    }
+
+    return (await response.json()) as QuestionBankResponse;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Question bank request timed out.");
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }

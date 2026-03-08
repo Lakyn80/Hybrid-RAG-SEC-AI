@@ -4,8 +4,11 @@ import { HistoryEntry } from "@/lib/types";
 
 interface QueryHistoryProps {
   activeHistoryId: string | null;
+  cacheMessage: string | null;
   history: HistoryEntry[];
+  isDeletingCache: boolean;
   onClearAll: () => void;
+  onDeleteCache: () => void;
   onDelete: (entryId: string) => void;
   onRestore: (entryId: string) => void;
   onRunAgain: (entryId: string) => void;
@@ -20,8 +23,11 @@ function formatTime(timestamp: string) {
 
 export function QueryHistory({
   activeHistoryId,
+  cacheMessage,
   history,
+  isDeletingCache,
   onClearAll,
+  onDeleteCache,
   onDelete,
   onRestore,
   onRunAgain,
@@ -42,6 +48,14 @@ export function QueryHistory({
           <div className="rounded-full border border-slate-200 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-slate-500">
             {history.length} stored
           </div>
+          <button
+            type="button"
+            onClick={onDeleteCache}
+            disabled={isDeletingCache}
+            className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isDeletingCache ? "Deleting cache..." : "Delete cache"}
+          </button>
           {history.length > 0 ? (
             <button
               type="button"
@@ -53,6 +67,12 @@ export function QueryHistory({
           ) : null}
         </div>
       </div>
+
+      {cacheMessage ? (
+        <div className="mb-4 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
+          {cacheMessage}
+        </div>
+      ) : null}
 
       {history.length === 0 ? (
         <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-sm leading-6 text-slate-500">

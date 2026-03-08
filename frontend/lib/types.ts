@@ -31,6 +31,16 @@ export interface AskResponse {
   cache_hit: boolean;
 }
 
+export interface CacheClearResponse {
+  ok: boolean;
+  redis_keys_deleted: number;
+  answer_cache_cleared: boolean;
+}
+
+export interface QuestionBankResponse {
+  questions: string[];
+}
+
 export interface ExecutionLogEntry {
   id: string;
   timestamp: string;
@@ -75,6 +85,6 @@ export interface HistoryEntry {
   answer?: string;
   mode?: string;
   cacheHit?: boolean;
-  status: "success" | "error";
+  status: "pending" | "success" | "error";
   snapshot: RunState;
 }

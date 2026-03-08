@@ -7,13 +7,16 @@ import { ExecutionLog } from "@/components/ExecutionLog";
 import { PipelineVisualizer } from "@/components/PipelineVisualizer";
 import { PromptPanel } from "@/components/PromptPanel";
 import { QueryHistory } from "@/components/QueryHistory";
-import { RagPipelineGraph } from "@/components/RagPipelineGraph";
+import { SuggestedQuestions } from "@/components/SuggestedQuestions";
 import { useAskPipeline } from "@/hooks/useAskPipeline";
+import { clearSystemCache } from "@/lib/api";
 
 const DEFAULT_QUERY = "What legal risks did Apple mention in its 10-K filings?";
 
 export function Dashboard() {
   const [query, setQuery] = useState(DEFAULT_QUERY);
+  const [cacheMessage, setCacheMessage] = useState<string | null>(null);
+  const [isDeletingCache, setIsDeletingCache] = useState(false);
   const {
     activeHistoryId,
     clearHistory,
@@ -33,6 +36,26 @@ export function Dashboard() {
 
     setQuery(nextQuery);
     await submitQuery(nextQuery);
+  };
+
+  const handleDeleteCache = async () => {
+    setIsDeletingCache(true);
+    setCacheMessage(null);
+
+    try {
+      const result = await clearSystemCache();
+      setCacheMessage(
+        `Cache cleared. Redis keys deleted: ${result.redis_keys_deleted}. Answer cache file reset: ${
+          result.answer_cache_cleared ? "yes" : "no"
+        }.`,
+      );
+    } catch (error) {
+      setCacheMessage(
+        error instanceof Error ? error.message : "Failed to clear backend cache.",
+      );
+    } finally {
+      setIsDeletingCache(false);
+    }
   };
 
   return (
@@ -67,11 +90,21 @@ export function Dashboard() {
               void handleSubmit();
             }}
           />
+          <SuggestedQuestions
+            onSelect={(selectedQuery) => {
+              setQuery(selectedQuery);
+            }}
+          />
           <QueryHistory
             activeHistoryId={activeHistoryId}
+            cacheMessage={cacheMessage}
             history={history}
+            isDeletingCache={isDeletingCache}
             onClearAll={() => {
               clearHistory();
+            }}
+            onDeleteCache={() => {
+              void handleDeleteCache();
             }}
             onDelete={(entryId) => {
               deleteHistoryEntry(entryId);
@@ -96,13 +129,6 @@ export function Dashboard() {
         <div className="grid min-h-[720px] gap-6 lg:grid-rows-[auto_minmax(0,1fr)_auto]">
           <PipelineVisualizer
             isLoading={run.isLoading}
-            status={run.streamStatus}
-            steps={run.steps}
-          />
-          <RagPipelineGraph
-            isLoading={run.isLoading}
-            logs={run.logs}
-            observedStreamEvents={run.observedStreamEvents}
             status={run.streamStatus}
             steps={run.steps}
           />
