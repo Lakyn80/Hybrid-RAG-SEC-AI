@@ -1,83 +1,63 @@
 name: Deploy
 
 on:
-  workflow_dispatch:
-    inputs:
-      deploy_host:
-        description: "Target server hostname or IP"
-        required: true
-        type: string
-      deploy_user:
-        description: "SSH user on target server"
-        required: true
-        type: string
-      deploy_path:
-        description: "Absolute path on the server where the repo should live"
-        required: true
-        type: string
-      deploy_port:
-        description: "SSH port"
-        required: true
-        default: "22"
-        type: string
-      ref:
-        description: "Git ref to deploy"
-        required: true
-        default: "main"
-        type: string
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref }}
-
-      - name: Prepare SSH key
+      - name: Configure SSH
         shell: bash
         run: |
           install -m 700 -d ~/.ssh
-          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -p "${{ inputs.deploy_port }}" "${{ inputs.deploy_host }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Ensure remote path exists
+      - name: Deploy to VPS
         shell: bash
         run: |
-          ssh -p "${{ inputs.deploy_port }}" "${{ inputs.deploy_user }}@${{ inputs.deploy_host }}" \
-            "mkdir -p '${{ inputs.deploy_path }}'"
-
-      - name: Sync project to server
-        shell: bash
-        run: |
-          rsync -az --delete \
-            --exclude '.git/' \
-            --exclude '.github/' \
-            --exclude '.next/' \
-            --exclude 'frontend/.next/' \
-            --exclude 'node_modules/' \
-            --exclude 'frontend/node_modules/' \
-            --exclude '__pycache__/' \
-            --exclude '.pytest_cache/' \
-            --exclude '.env' \
-            --exclude 'data/cache/' \
-            -e "ssh -p ${{ inputs.deploy_port }}" \
-            ./ "${{ inputs.deploy_user }}@${{ inputs.deploy_host }}:${{ inputs.deploy_path }}/"
-
-      - name: Deploy with Docker Compose
-        shell: bash
-        run: |
-          ssh -p "${{ inputs.deploy_port }}" "${{ inputs.deploy_user }}@${{ inputs.deploy_host }}" <<'EOF'
+          ssh -o StrictHostKeyChecking=yes "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" 'bash -s' <<'EOF'
           set -euo pipefail
-          cd "${{ inputs.deploy_path }}"
 
-          if [ ! -f .env ]; then
-            echo "Missing .env on target server at $PWD/.env"
-            exit 1
+          DEPLOY_DIR="$HOME/projects/rag"
+          REPO_URL="${{ github.server_url }}/${{ github.repository }}.git"
+          GITHUB_TOKEN="${{ github.token }}"
+
+          auth_header=
+          if [ -n "$GITHUB_TOKEN" ]; then
+            auth_header=$(printf '%s' "x-access-token:$GITHUB_TOKEN" | base64 | tr -d '\n')
           fi
 
+          git_auth() {
+            if [ -n "$auth_header" ]; then
+              git -c "http.extraHeader=AUTHORIZATION: basic $auth_header" "$@"
+            else
+              git "$@"
+            fi
+          }
+
+          mkdir -p "$(dirname "$DEPLOY_DIR")"
+
+          if [ -d "$DEPLOY_DIR/.git" ]; then
+            git_auth -C "$DEPLOY_DIR" fetch origin main
+            git -C "$DEPLOY_DIR" checkout main
+            git_auth -C "$DEPLOY_DIR" pull --ff-only origin main
+          elif [ -d "$DEPLOY_DIR" ]; then
+            echo "Deployment directory exists but is not a Git repository: $DEPLOY_DIR" >&2
+            exit 1
+          else
+            git_auth clone --branch main --single-branch "$REPO_URL" "$DEPLOY_DIR"
+          fi
+
+          cd "$DEPLOY_DIR"
+          docker compose down
           docker compose up -d --build
           EOF
