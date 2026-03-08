@@ -51,8 +51,30 @@ jobs:
             git -C "$DEPLOY_DIR" checkout main
             git_auth -C "$DEPLOY_DIR" pull --ff-only origin main
           elif [ -d "$DEPLOY_DIR" ]; then
-            echo "Deployment directory exists but is not a Git repository: $DEPLOY_DIR" >&2
-            exit 1
+            BACKUP_DIR="${DEPLOY_DIR}_backup_$(date +%Y%m%d_%H%M%S)"
+            PRESERVE_DIR="$(mktemp -d)"
+
+            if [ -f "$DEPLOY_DIR/.env" ]; then
+              cp "$DEPLOY_DIR/.env" "$PRESERVE_DIR/.env"
+            fi
+
+            if [ -f "$DEPLOY_DIR/docker-compose.override.yml" ]; then
+              cp "$DEPLOY_DIR/docker-compose.override.yml" "$PRESERVE_DIR/docker-compose.override.yml"
+            fi
+
+            mv "$DEPLOY_DIR" "$BACKUP_DIR"
+            git_auth clone --branch main --single-branch "$REPO_URL" "$DEPLOY_DIR"
+
+            if [ -f "$PRESERVE_DIR/.env" ]; then
+              mv "$PRESERVE_DIR/.env" "$DEPLOY_DIR/.env"
+            fi
+
+            if [ -f "$PRESERVE_DIR/docker-compose.override.yml" ]; then
+              mv "$PRESERVE_DIR/docker-compose.override.yml" "$DEPLOY_DIR/docker-compose.override.yml"
+            fi
+
+            rmdir "$PRESERVE_DIR" 2>/dev/null || true
+            echo "Backed up existing non-git deployment directory to: $BACKUP_DIR"
           else
             git_auth clone --branch main --single-branch "$REPO_URL" "$DEPLOY_DIR"
           fi
