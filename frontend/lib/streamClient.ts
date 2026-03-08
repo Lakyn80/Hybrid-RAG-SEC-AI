@@ -27,7 +27,12 @@ export function openPipelineStream(query: string, handlers: StreamHandlers) {
   let closedByClient = false;
 
   const handleMessage = (event: MessageEvent<string>) => {
-    const normalized = mapBackendEvent(event.data);
+    const payload = String(event.data ?? "").trim();
+    if (!payload) {
+      return;
+    }
+
+    const normalized = mapBackendEvent(payload);
     handlers.onEvent?.(normalized);
 
     if (normalized.terminal && !closedByClient) {

@@ -11,10 +11,15 @@ from app.services.answer_service import answer_query
 logger = get_logger(__name__)
 
 TERMINAL_EVENTS = {"answer_generated", "error"}
+HEARTBEAT_INTERVAL_SECONDS = 10.0
 
 
 def format_sse_event(event_name: str) -> str:
     return f"data: {str(event_name).strip()}\n\n"
+
+
+def format_sse_comment(comment: str = "keep-alive") -> str:
+    return f": {comment}\n\n"
 
 
 async def _run_observed_query(
@@ -22,9 +27,16 @@ async def _run_observed_query(
     queue: asyncio.Queue[str],
 ) -> None:
     loop = asyncio.get_running_loop()
+    seen_terminal = False
 
     def emit_event(event_name: str) -> None:
-        loop.call_soon_threadsafe(queue.put_nowait, str(event_name).strip())
+        nonlocal seen_terminal
+        normalized_event = str(event_name).strip()
+        if not normalized_event:
+            return
+        if normalized_event in TERMINAL_EVENTS:
+            seen_terminal = True
+        loop.call_soon_threadsafe(queue.put_nowait, normalized_event)
 
     try:
         await asyncio.to_thread(
@@ -35,9 +47,12 @@ async def _run_observed_query(
             emit_event,
             True,
         )
+        if not seen_terminal:
+            emit_event("answer_generated")
     except Exception as exc:
         logger.info(f"stream_observer_error={exc}")
-        emit_event("error")
+        if not seen_terminal:
+            emit_event("error")
 
 
 async def stream_pipeline(query: str) -> AsyncGenerator[str, None]:
@@ -46,7 +61,17 @@ async def stream_pipeline(query: str) -> AsyncGenerator[str, None]:
 
     try:
         while True:
-            event_name = await queue.get()
+            try:
+                event_name = await asyncio.wait_for(
+                    queue.get(),
+                    timeout=HEARTBEAT_INTERVAL_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                if observer_task.done() and queue.empty():
+                    break
+                yield format_sse_comment()
+                continue
+
             if not event_name:
                 continue
 
