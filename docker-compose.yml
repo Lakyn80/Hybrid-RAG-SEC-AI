@@ -37,5 +37,17 @@ services:
       -t 300
       -b 0.0.0.0:8021
 
+  rag-frontend:
+    build:
+      context: ./frontend
+    container_name: hybrid-rag-frontend
+    depends_on:
+      - rag-api
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: http://rag-api:8021
+    restart: unless-stopped
+
 volumes:
   qdrant_data:

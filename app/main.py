@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from app.router.stream_router import router as stream_router
 from app.services.answer_service import answer_query
 
 
 app = FastAPI(title="Hybrid RAG SEC AI")
+app.include_router(stream_router)
 
 
 class AskRequest(BaseModel):

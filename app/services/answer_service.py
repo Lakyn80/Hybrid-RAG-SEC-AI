@@ -7,7 +7,7 @@ import re
 import json
 import time
 import hashlib
-from typing import Any, TypedDict
+from typing import Any, Callable, TypedDict
 
 import numpy as np
 import pandas as pd
@@ -55,6 +55,8 @@ RISK_HINT_WORDS = {
     "terrorism", "disaster", "public", "health", "privacy", "security",
     "competition", "market", "volatile", "volatility", "credit", "liquidity"
 }
+
+PipelineEventCallback = Callable[[str], None]
 
 
 def normalize_env_value(value: str | None) -> str:
@@ -178,6 +180,17 @@ def format_sources(results_df: pd.DataFrame) -> str:
         return "Sources:\n- No sources available."
 
     return "Sources:\n" + "\n".join(source_lines)
+
+
+def emit_pipeline_event(state: "GraphState", event_name: str) -> None:
+    callback = state.get("event_callback")
+    if not callable(callback):
+        return
+
+    try:
+        callback(str(event_name).strip())
+    except Exception as exc:
+        logger.info(f"stream_event_emit_failed={exc}")
 
 
 def filters_are_active(company_filter: str | None, form_filter: str | None) -> bool:
@@ -512,6 +525,8 @@ class GraphState(TypedDict, total=False):
     query: str
     company_filter: str | None
     form_filter: str | None
+    event_callback: PipelineEventCallback | None
+    observation_only: bool
     query_type: str
     retrieval_backend: str
     index_version: str
@@ -546,6 +561,7 @@ def records_to_dataframe(records: list[dict[str, Any]] | None) -> pd.DataFrame:
 
 
 def node_prepare(state: GraphState) -> GraphState:
+    emit_pipeline_event(state, "query_received")
     query = str(state["query"]).strip()
     company_filter = state.get("company_filter") or infer_company_filter(query)
     form_filter = state.get("form_filter") or infer_form_filter(query)
@@ -614,6 +630,7 @@ def route_after_cache(state: GraphState) -> str:
 
 def node_cache_return(state: GraphState) -> GraphState:
     cached_entry = state["cached_entry"]
+    emit_pipeline_event(state, "answer_generated")
 
     return {
         "mode": "cache",
@@ -653,6 +670,7 @@ def route_after_semantic_cache(state: GraphState) -> str:
 
 def node_semantic_cache_return(state: GraphState) -> GraphState:
     semantic_entry = state["semantic_cached_entry"]
+    emit_pipeline_event(state, "answer_generated")
 
     return {
         "mode": "cache",
@@ -670,6 +688,7 @@ def node_parallel_retrieve(state: GraphState) -> GraphState:
     try:
         query = state["query"]
         retrieval_cache_key = state["retrieval_cache_key"]
+        observation_only = bool(state.get("observation_only", False))
 
         cached_retrieval = read_retrieval_cache(retrieval_cache_key)
         if cached_retrieval and cached_retrieval.get("rows"):
@@ -682,6 +701,8 @@ def node_parallel_retrieve(state: GraphState) -> GraphState:
 
         logger.info("retrieval_cache_hit=False")
         start_retrieval = time.time()
+        emit_pipeline_event(state, "embedding_created")
+        emit_pipeline_event(state, "hybrid_retrieval_started")
 
         vector_df = search_rows(
             query,
@@ -704,6 +725,7 @@ def node_parallel_retrieve(state: GraphState) -> GraphState:
         logger.info(f"parallel_retrieval_rows={len(merged)}")
 
         start_rerank = time.time()
+        emit_pipeline_event(state, "reranking_started")
         reranked_df = rerank(
             query,
             merged,
@@ -722,15 +744,18 @@ def node_parallel_retrieve(state: GraphState) -> GraphState:
         logger.info(f"retrieval_ms={retrieval_ms}")
 
         results_rows = dataframe_to_records(results_df)
-        cache_written = write_retrieval_cache(
-            retrieval_cache_key,
-            query=query,
-            company_filter=state.get("company_filter"),
-            form_filter=state.get("form_filter"),
-            backend=state["retrieval_backend"],
-            index_version=state["index_version"],
-            rows=results_rows,
-        )
+        if observation_only:
+            cache_written = False
+        else:
+            cache_written = write_retrieval_cache(
+                retrieval_cache_key,
+                query=query,
+                company_filter=state.get("company_filter"),
+                form_filter=state.get("form_filter"),
+                backend=state["retrieval_backend"],
+                index_version=state["index_version"],
+                rows=results_rows,
+            )
         logger.info(f"retrieval_cache_write={cache_written}")
 
         return {
@@ -798,6 +823,7 @@ def node_retrieval_failed(state: GraphState) -> GraphState:
 
 
 def node_build_context(state: GraphState) -> GraphState:
+    emit_pipeline_event(state, "context_build_started")
     results_df = records_to_dataframe(state.get("results_rows"))
     results_df = limit_context_rows(results_df, max_chunks=TOP_K)
     context = build_context(results_df)
@@ -811,11 +837,13 @@ def node_build_context(state: GraphState) -> GraphState:
 
 def node_llm(state: GraphState) -> GraphState:
     try:
+        emit_pipeline_event(state, "llm_generation_started")
         logger.info("calling_llm")
         start_llm = time.time()
         answer = post_process_answer(call_llm(state["query"], state["context"]))
         llm_ms = int((time.time() - start_llm) * 1000)
         logger.info(f"llm_ms={llm_ms}")
+        emit_pipeline_event(state, "answer_generated")
 
         return {
             "answer": answer,
@@ -833,6 +861,9 @@ def node_llm(state: GraphState) -> GraphState:
 
 
 def node_save_semantic_cache(state: GraphState) -> GraphState:
+    if state.get("observation_only"):
+        return state
+
     if state.get("cache_hit") or state.get("retrieval_error") or state.get("llm_error"):
         return state
 
@@ -856,6 +887,9 @@ def node_save_semantic_cache(state: GraphState) -> GraphState:
 
 
 def node_save_cache(state: GraphState) -> GraphState:
+    if state.get("observation_only"):
+        return state
+
     if state.get("cache_hit") or state.get("retrieval_error"):
         return state
 
@@ -945,6 +979,8 @@ def answer_query(
     query: str,
     company_filter: str | None = None,
     form_filter: str | None = None,
+    event_callback: PipelineEventCallback | None = None,
+    observation_only: bool = False,
 ) -> dict:
     graph = get_answer_graph()
 
@@ -952,9 +988,18 @@ def answer_query(
         "query": query,
         "company_filter": company_filter,
         "form_filter": form_filter,
+        "event_callback": event_callback,
+        "observation_only": observation_only,
     })
 
-    if final_state.get("cache_hit"):
+    if final_state.get("retrieval_error") or final_state.get("llm_error"):
+        if callable(event_callback):
+            try:
+                event_callback("error")
+            except Exception as exc:
+                logger.info(f"stream_event_emit_failed={exc}")
+
+    if final_state.get("cache_hit") and not observation_only:
         save_cache(final_state["cache_data"])
 
     return _build_result(
