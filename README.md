@@ -1,4 +1,3 @@
-```markdown
 # Hybrid RAG SEC AI
 
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
@@ -9,8 +8,7 @@
 ![LLM](https://img.shields.io/badge/LLM-DeepSeek-black)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-<<<<<<< HEAD
-Hybrid RAG SEC AI is a **production-style Retrieval-Augmented Generation system** built for **question answering over SEC filings**.
+Hybrid RAG SEC AI is a production-style Retrieval-Augmented Generation system built for question answering over SEC filings.
 
 The system combines:
 
