@@ -10,8 +10,8 @@ services:
     container_name: hybrid-rag-qdrant
     restart: unless-stopped
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - "${QDRANT_HTTP_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
     volumes:
       - qdrant_data:/qdrant/storage
 
@@ -22,7 +22,7 @@ services:
       - redis
       - qdrant
     ports:
-      - "8021:8021"
+      - "${API_PORT:-8021}:8021"
     volumes:
       - .:/app
     environment:
@@ -46,7 +46,7 @@ services:
     depends_on:
       - rag-api
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     environment:
       NEXT_PUBLIC_BACKEND_URL: http://rag-api:8021
     restart: unless-stopped
