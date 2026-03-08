@@ -32,3 +32,4 @@ ragas
 datasets
 langchain
 openai
+gunicorn

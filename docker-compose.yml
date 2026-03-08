@@ -30,8 +30,12 @@ services:
       QDRANT_URL: http://qdrant:6333
       QDRANT_COLLECTION_ALIAS: sec_filings_chunks_current
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8021
+    command: >
+      gunicorn app.main:app
+      -k uvicorn.workers.UvicornWorker
+      -w 2
+      -t 300
+      -b 0.0.0.0:8021
 
 volumes:
   qdrant_data:
-

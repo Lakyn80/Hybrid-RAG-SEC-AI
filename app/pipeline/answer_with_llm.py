@@ -1,63 +1,117 @@
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
 import os
-import sys
+import asyncio
+from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-if BASE_DIR not in sys.path:
-    sys.path.insert(0, BASE_DIR)
+ENV_FILE = os.path.join(BASE_DIR, ".env")
 
-from app.services.answer_service import answer_query, llm_api_key_present
+load_dotenv(dotenv_path=ENV_FILE, override=False)
 
+prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            """You are a financial document analysis assistant specialized in SEC filings.
 
-def parse_optional_arg(prefix: str, args: list[str]) -> str | None:
-    for arg in args:
-        if arg.startswith(prefix):
-            return arg[len(prefix):].strip()
-    return None
+Your task is to answer questions strictly using the provided filing excerpts.
 
+Rules:
 
-def main() -> int:
-    args = sys.argv[1:]
+1. Use ONLY the information explicitly stated in the context.
+2. Do NOT use external knowledge.
+3. Do NOT infer facts not present in the text.
+4. If the answer cannot be found in the context, say:
+   "The provided filings do not contain this information."
+5. Answer the question directly and concisely.
+6. Focus only on the information relevant to the question.
+7. Do not summarize unrelated sections of the filing.
 
-    company_filter = parse_optional_arg("--company=", args)
-    form_filter = parse_optional_arg("--form=", args)
+Answer style:
 
-    query_parts = [
-        arg for arg in args
-        if not arg.startswith("--company=") and not arg.startswith("--form=")
+- provide a clear explanation in 3–8 sentences
+- factual statements only
+- avoid speculation""",
+        ),
+        (
+            "human",
+            """Question:
+{question}
+
+Context:
+{context}""",
+        ),
     ]
-    query = " ".join(query_parts).strip()
+)
 
-    if not query:
-        print('Usage: python .\\app\\pipeline\\answer_with_llm.py "your query here" [--company=Apple Inc.] [--form=10-K]')
-        return 1
+def normalize_base_url(raw_url: str | None) -> str | None:
+    if not raw_url:
+        return None
 
-    result = answer_query(
-        query,
-        company_filter=company_filter,
-        form_filter=form_filter,
+    base_url = raw_url.strip().rstrip("/")
+    suffix = "/chat/completions"
+
+    if base_url.endswith(suffix):
+        return base_url[: -len(suffix)]
+
+    return base_url
+
+
+def get_llm_settings() -> tuple[str, str, str | None]:
+    model_name = str(os.getenv("LLM_MODEL") or "").strip() or "deepseek-chat"
+    api_key = str(os.getenv("DEEPSEEK_API_KEY") or "").strip()
+    base_url = normalize_base_url(
+        str(os.getenv("LLM_API_URL") or "").strip() or "https://api.deepseek.com/chat/completions"
     )
 
-    print(f"QUERY: {result['query']}")
-    print(f"COMPANY_FILTER: {result['company_filter']}")
-    print(f"FORM_FILTER: {result['form_filter']}")
-    print(f"LLM_MODEL: {result['llm_model']}")
-    print(f"DEEPSEEK_API_KEY_PRESENT: {llm_api_key_present()}")
+    if not api_key:
+        raise ValueError("Missing DEEPSEEK_API_KEY for the configured DeepSeek provider.")
 
-    if result["cache_hit"]:
-        print(f"CACHE_MODE: {result['cache_mode']}")
-
-    if result["retrieval_error"]:
-        print(f"RETRIEVAL ERROR: {result['retrieval_error']}")
-        return 1
-
-    if result["llm_error"]:
-        print(f"LLM ERROR: {result['llm_error']}")
-
-    print(f"\n=== ANSWER ({result['mode'].upper()}) ===\n")
-    print(result["answer"])
-
-    return 0
+    return model_name, api_key, base_url
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+def build_chat_llm(temperature: float = 0.2) -> ChatOpenAI:
+    model_name, api_key, base_url = get_llm_settings()
+
+    return ChatOpenAI(
+        model=model_name,
+        temperature=temperature,
+        api_key=api_key,
+        base_url=base_url,
+        request_timeout=120,
+        max_retries=2,
+    )
+
+
+# limiter per worker process
+_llm_semaphore = None
+
+
+def get_llm_semaphore():
+    global _llm_semaphore
+    if _llm_semaphore is None:
+        limit = int(os.getenv("LLM_MAX_CONCURRENCY", "3"))
+        _llm_semaphore = asyncio.Semaphore(limit)
+    return _llm_semaphore
+
+
+async def run_chain_async(question: str, context: str) -> str:
+    llm = build_chat_llm(temperature=0.2)
+    chain = prompt | llm
+
+    semaphore = get_llm_semaphore()
+
+    async with semaphore:
+        response = await chain.ainvoke(
+            {
+                "question": question,
+                "context": context
+            }
+        )
+
+    return response.content
+
+
+def run_chain(question: str, context: str) -> str:
+    return asyncio.run(run_chain_async(question, context))

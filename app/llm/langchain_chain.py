@@ -1,12 +1,15 @@
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 import os
+import asyncio
 from dotenv import load_dotenv
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 ENV_FILE = os.path.join(BASE_DIR, ".env")
 
 load_dotenv(dotenv_path=ENV_FILE, override=False)
+
+LLM_SEMAPHORE = asyncio.Semaphore(2)
 
 prompt = ChatPromptTemplate.from_messages(
     [
@@ -29,7 +32,7 @@ Rules:
 
 Answer style:
 
-- 2–4 sentences maximum
+- provide a clear explanation in 3–8 sentences
 - factual statements only
 - avoid speculation""",
         ),
@@ -86,9 +89,13 @@ def run_chain(question: str, context: str) -> str:
 
     chain = prompt | llm
 
-    response = chain.invoke({
-        "question": question,
-        "context": context
-    })
+    async def _invoke():
+        async with LLM_SEMAPHORE:
+            return await chain.ainvoke({
+                "question": question,
+                "context": context
+            })
+
+    response = asyncio.run(_invoke())
 
     return response.content
