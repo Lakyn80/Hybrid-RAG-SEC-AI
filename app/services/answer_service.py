@@ -52,8 +52,8 @@ TOP_K = 10
 RETRIEVAL_CANDIDATES = 50
 VECTOR_SEARCH_K = 50
 MAX_FALLBACK_SENTENCES = 5
-MAX_ANSWER_SENTENCES = 4
-RANKING_POLICY_VERSION = "content_rank_v2"
+MAX_ANSWER_SENTENCES = 6
+RANKING_POLICY_VERSION = "content_rank_v3"
 
 LLM_CACHE_TTL_SECONDS = 60 * 60 * 24
 FALLBACK_CACHE_TTL_SECONDS = 60 * 10
@@ -482,6 +482,81 @@ def calculate_query_overlap(query: str, chunk_text: str) -> float:
     return min(max(overlap, 0.0), 1.0)
 
 
+def calculate_form_boost(
+    query_focus: dict[str, bool],
+    form_value: str,
+    form_filter: str | None,
+) -> float:
+    if form_filter:
+        return 0.0
+
+    form = str(form_value or "").strip().upper()
+    if not form:
+        return 0.0
+
+    boost = 0.0
+
+    if query_focus["governance"]:
+        if form == "DEF 14A":
+            boost += 0.22
+        elif form == "8-K":
+            boost -= 0.04
+        elif form in {"10-K", "10-Q"}:
+            boost -= 0.06
+        return boost
+
+    if query_focus["financial"]:
+        if form == "10-Q":
+            boost += 0.16
+        elif form == "10-K":
+            boost += 0.12
+        elif form == "8-K":
+            boost -= 0.08
+        elif form == "DEF 14A":
+            boost -= 0.18
+        return boost
+
+    if query_focus["risk"] or query_focus["legal"]:
+        if form == "10-K":
+            boost += 0.18
+        elif form == "10-Q":
+            boost += 0.08
+        elif form == "8-K":
+            boost -= 0.10
+        elif form == "DEF 14A":
+            boost -= 0.14
+        return boost
+
+    if query_focus["compare"]:
+        if form == "10-K":
+            boost += 0.08
+        elif form == "10-Q":
+            boost += 0.03
+        elif form == "DEF 14A":
+            boost -= 0.05
+
+    return boost
+
+
+def calculate_topic_specific_boost(query: str, chunk_text: str) -> float:
+    topic_tokens = tokenize_similarity_terms(extract_query_topic(query))
+    if not topic_tokens:
+        return 0.0
+
+    chunk_tokens = tokenize_similarity_terms(chunk_text)
+    if not chunk_tokens:
+        return 0.0
+
+    overlap = len(topic_tokens & chunk_tokens)
+    if overlap >= 3:
+        return 0.14
+    if overlap >= 2:
+        return 0.10
+    if overlap == 1 and len(topic_tokens) == 1:
+        return 0.06
+    return 0.0
+
+
 def calculate_content_boost(
     query_focus: dict[str, bool],
     content_bucket: str,
@@ -582,6 +657,7 @@ def apply_blended_ranking(
     results_df: pd.DataFrame,
     query: str,
     query_type: str,
+    form_filter: str | None = None,
 ) -> pd.DataFrame:
     if results_df is None or results_df.empty:
         return results_df
@@ -607,11 +683,20 @@ def apply_blended_ranking(
         lambda row: calculate_content_boost(query_focus, str(row.get("content_bucket", "generic")), str(row.get("chunk_text", ""))),
         axis=1,
     )
+    ranked_df["form_boost"] = ranked_df.apply(
+        lambda row: calculate_form_boost(query_focus, str(row.get("form", "")), form_filter),
+        axis=1,
+    )
+    ranked_df["topic_boost"] = ranked_df["chunk_text"].astype(str).apply(
+        lambda text: calculate_topic_specific_boost(query, text)
+    )
     ranked_df["final_score"] = (
         (0.62 * ranked_df["rerank_score_norm"])
         + (0.24 * ranked_df["retrieval_signal_norm"])
         + (0.14 * ranked_df["query_overlap"])
         + ranked_df["content_boost"]
+        + ranked_df["form_boost"]
+        + ranked_df["topic_boost"]
         - ranked_df["boilerplate_penalty"]
     )
     ranked_df = ranked_df.sort_values("final_score", ascending=False, kind="mergesort")
@@ -972,10 +1057,18 @@ def post_process_answer(answer: str) -> str:
     if not text:
         return ""
 
-    text = re.sub(r"\s+", " ", text).strip()
-    sentences = split_sentences(text)
-    if sentences:
-        text = " ".join(sentences[:MAX_ANSWER_SENTENCES]).strip()
+    if "\n" in text or re.search(r"(^|\s)(\d+\.)", text) or re.search(r"(^|\n)\s*[-*]\s+", text):
+        cleaned_lines = [
+            re.sub(r"\s+", " ", line).strip()
+            for line in text.splitlines()
+            if re.sub(r"\s+", " ", line).strip()
+        ]
+        text = "\n".join(cleaned_lines).strip()
+    else:
+        text = re.sub(r"\s+", " ", text).strip()
+        sentences = split_sentences(text)
+        if sentences:
+            text = " ".join(sentences[:MAX_ANSWER_SENTENCES]).strip()
 
     return text
 
@@ -1228,6 +1321,7 @@ def node_parallel_retrieve(state: GraphState) -> GraphState:
             reranked_df,
             query=query,
             query_type=state.get("query_type", "general"),
+            form_filter=state.get("form_filter"),
         )
         rerank_ms = int((time.time() - start_rerank) * 1000)
         logger.info(f"rerank_ms={rerank_ms}")
@@ -1297,6 +1391,7 @@ def node_retrieve(state: GraphState) -> GraphState:
             results_df,
             query=state["query"],
             query_type=state.get("query_type", "general"),
+            form_filter=state.get("form_filter"),
         )
         rerank_ms = int((time.time() - start_rerank) * 1000)
         logger.info(f"rerank_ms={rerank_ms}")
