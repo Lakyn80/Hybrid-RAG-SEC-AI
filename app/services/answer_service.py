@@ -1035,9 +1035,9 @@ def build_context(results_df: pd.DataFrame) -> str:
     results_df = select_diverse_context_rows(results_df, max_chunks=TOP_K)
     blocks = []
 
-    for _, row in results_df.iterrows():
+    for index, (_, row) in enumerate(results_df.iterrows(), start=1):
         header = (
-            f"[Company: {row.get('company', '')} | "
+            f"[Excerpt {index} | Company: {row.get('company', '')} | "
             f"Form: {row.get('form', '')} | "
             f"Date: {row.get('filing_date', '')}]"
         )
@@ -1115,7 +1115,15 @@ def post_process_answer(answer: str) -> str:
             for line in text.splitlines()
             if re.sub(r"\s+", " ", line).strip()
         ]
-        text = "\n".join(cleaned_lines).strip()
+        bullet_lines = [
+            line
+            for line in cleaned_lines
+            if re.match(r"^[-*]\s+", line)
+        ]
+        if bullet_lines:
+            text = "\n".join(bullet_lines[:5]).strip()
+        else:
+            text = "\n".join(cleaned_lines[:5]).strip()
     else:
         text = re.sub(r"\s+", " ", text).strip()
         sentences = split_sentences(text)

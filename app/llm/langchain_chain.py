@@ -23,16 +23,21 @@ Rules:
 
 1. Use ONLY the information explicitly stated in the context.
 2. Do NOT use external knowledge.
-3. Do NOT infer facts not present in the text.
-4. If the answer cannot be found in the context, say:
+3. Do NOT infer, generalize, or expand beyond what is written in the excerpts.
+4. Each factual point in the answer must be supported by at least one excerpt number.
+5. If a detail is not explicitly stated in the excerpts, do NOT include it.
+6. If the answer cannot be found in the context, say exactly:
    "The provided filings do not contain this information."
-5. Answer the question directly and concisely.
-6. Focus only on the information relevant to the question.
-7. Do not summarize unrelated sections of the filing.
+7. Focus only on the information relevant to the question.
+8. Do not summarize unrelated sections of the filing.
+9. Do not add introductory text like "Based solely on the provided excerpts".
 
 Answer style:
 
-- provide a clear explanation in 3–8 sentences
+- Return ONLY bullet points.
+- 3-5 concise bullet points maximum
+- each bullet must end with excerpt citations like [Excerpt 2] or [Excerpt 2, Excerpt 4]
+- if a bullet cannot be cited, do not include it
 - factual statements only
 - avoid speculation""",
         ),
@@ -73,7 +78,7 @@ def get_llm_settings() -> tuple[str, str, str | None]:
     return model_name, api_key, base_url
 
 
-def build_chat_llm(temperature: float = 0.2) -> ChatOpenAI:
+def build_chat_llm(temperature: float = 0.0) -> ChatOpenAI:
     model_name, api_key, base_url = get_llm_settings()
 
     return ChatOpenAI(
@@ -85,7 +90,7 @@ def build_chat_llm(temperature: float = 0.2) -> ChatOpenAI:
 
 
 def run_chain(question: str, context: str) -> str:
-    llm = build_chat_llm(temperature=0.2)
+    llm = build_chat_llm(temperature=0.0)
 
     chain = prompt | llm
 
