@@ -80,6 +80,32 @@ jobs:
           fi
 
           cd "$DEPLOY_DIR"
-          docker compose down
-          docker compose up -d --build
+          ENV_FILE="$DEPLOY_DIR/.env"
+          COMPOSE_ENV_ARGS=()
+
+          if [ -f "$ENV_FILE" ]; then
+            set -a
+            . "$ENV_FILE"
+            set +a
+            COMPOSE_ENV_ARGS=(--env-file "$ENV_FILE")
+          fi
+
+          if [ -z "${FRONTEND_PORT:-}" ]; then
+            for port in 3000 3001 3002 3010; do
+              if ! ss -ltn "( sport = :$port )" | awk 'NR>1 {print $4}' | grep -q .; then
+                FRONTEND_PORT="$port"
+                export FRONTEND_PORT
+                break
+              fi
+            done
+          fi
+
+          if [ -z "${FRONTEND_PORT:-}" ]; then
+            echo "Unable to determine a free frontend port." >&2
+            exit 1
+          fi
+
+          echo "Deploying with FRONTEND_PORT=$FRONTEND_PORT"
+          docker compose "${COMPOSE_ENV_ARGS[@]}" down
+          docker compose "${COMPOSE_ENV_ARGS[@]}" up -d --build
           EOF

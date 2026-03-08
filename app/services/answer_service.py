@@ -34,6 +34,7 @@ from app.router.query_router import (
     extract_query_topic,
     get_company_display_name,
 )
+from app.services.query_guard import is_query_allowed
 from app.services.semantic_cache import lookup_semantic_cache, save_semantic_cache
 
 logger = get_logger(__name__)
@@ -1170,6 +1171,7 @@ class GraphState(TypedDict, total=False):
     semantic_cached_entry: dict | None
     results_rows: list[dict[str, Any]] | None
     context: str
+    query_allowed: bool
     sources_text: str
     answer: str
     mode: str
@@ -1506,6 +1508,29 @@ def node_build_context(state: GraphState) -> GraphState:
     }
 
 
+def node_query_guard(state: GraphState) -> GraphState:
+    query_allowed = is_query_allowed(state.get("query", ""))
+    if query_allowed:
+        return {
+            "query_allowed": True,
+        }
+
+    logger.info("QUERY_BLOCKED_BY_GUARD")
+    emit_pipeline_event(state, "answer_generated")
+    return {
+        "query_allowed": False,
+        "answer": "This system answers questions only about SEC filings and company disclosures.",
+        "mode": "fallback",
+        "sources_text": "Sources:\n- query_guard",
+        "llm_error": None,
+        "retrieval_error": None,
+    }
+
+
+def route_after_query_guard(state: GraphState) -> str:
+    return "llm" if state.get("query_allowed", False) else "save_semantic_cache"
+
+
 def node_llm(state: GraphState) -> GraphState:
     try:
         emit_pipeline_event(state, "llm_generation_started")
@@ -1604,6 +1629,7 @@ def get_answer_graph():
     workflow.add_node("retrieve", node_parallel_retrieve)
     workflow.add_node("retrieval_failed", node_retrieval_failed)
     workflow.add_node("build_context", node_build_context)
+    workflow.add_node("query_guard", node_query_guard)
     workflow.add_node("llm", node_llm)
     workflow.add_node("save_semantic_cache", node_save_semantic_cache)
     workflow.add_node("save_cache", node_save_cache)
@@ -1637,7 +1663,15 @@ def get_answer_graph():
         },
     )
     workflow.add_edge("retrieval_failed", END)
-    workflow.add_edge("build_context", "llm")
+    workflow.add_edge("build_context", "query_guard")
+    workflow.add_conditional_edges(
+        "query_guard",
+        route_after_query_guard,
+        {
+            "llm": "llm",
+            "save_semantic_cache": "save_semantic_cache",
+        },
+    )
     workflow.add_edge("llm", "save_semantic_cache")
     workflow.add_edge("save_semantic_cache", "save_cache")
     workflow.add_edge("save_cache", END)

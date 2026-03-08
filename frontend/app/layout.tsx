@@ -17,6 +17,11 @@ const ibmPlexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "Hybrid RAG SEC AI Control Room",
   description: "Live execution dashboard for the Hybrid RAG SEC AI pipeline.",
+  icons: {
+    icon: "/icon-512x512.png",
+    apple: "/icon-512x512.png",
+    shortcut: "/icon-512x512.png",
+  },
 };
 
 export default function RootLayout({

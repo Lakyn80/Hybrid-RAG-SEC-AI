@@ -37,7 +37,7 @@ export function PromptPanel({
         </p>
         <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
           <li>What legal risks did Apple mention in its 10-K filings?</li>
-          <li>Summarize risk factors in Tesla&apos;s annual report.</li>
+          <li>Summarize risk factors in NVIDIA&apos;s annual report.</li>
           <li>What litigation risks appear in the filings?</li>
         </ul>
       </div>
@@ -75,14 +75,24 @@ export function PromptPanel({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={isLoading || !query.trim()}
-          className="inline-flex min-w-[156px] items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-        >
-          {isLoading ? "Running..." : "Ask pipeline"}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="inline-flex min-w-[120px] items-center justify-center rounded-full border border-slate-300 bg-white px-5 py-3 text-sm font-medium text-slate-800 transition hover:border-slate-400 hover:bg-slate-50"
+          >
+            Refresh
+          </button>
+
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={isLoading || !query.trim()}
+            className="inline-flex min-w-[156px] items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+          >
+            {isLoading ? "Running..." : "Ask pipeline"}
+          </button>
+        </div>
       </div>
     </section>
   );
