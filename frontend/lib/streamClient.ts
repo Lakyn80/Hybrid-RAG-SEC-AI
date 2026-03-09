@@ -13,16 +13,19 @@ export interface StreamHandlers {
   onException?: (error: unknown) => void;
 }
 
-export function buildStreamUrl(query: string) {
+export function buildStreamUrl(query: string, runId?: string) {
   const params = new URLSearchParams({
     query,
   });
+  if (runId) {
+    params.set("run_id", runId);
+  }
 
   return `/api/stream?${params.toString()}`;
 }
 
-export function openPipelineStream(query: string, handlers: StreamHandlers) {
-  const eventSource = new EventSource(buildStreamUrl(query));
+export function openPipelineStream(query: string, runId: string | undefined, handlers: StreamHandlers) {
+  const eventSource = new EventSource(buildStreamUrl(query, runId));
   let hasOpened = false;
   let closedByClient = false;
 

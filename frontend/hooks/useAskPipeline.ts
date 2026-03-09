@@ -484,7 +484,7 @@ export function useAskPipeline() {
       setRun(initialRun);
       addHistory(buildHistoryEntry(runId, initialRun, "pending"));
 
-      connect(trimmedQuery, {
+      connect(trimmedQuery, runId, {
         onOpen: () => {
           if (activeRunIdRef.current !== runId) {
             return;
@@ -560,7 +560,7 @@ export function useAskPipeline() {
       });
 
       try {
-        const answer = await askQuestion({ query: trimmedQuery });
+        const answer = await askQuestion({ query: trimmedQuery }, { runId });
         if (activeRunIdRef.current !== runId) {
           return;
         }

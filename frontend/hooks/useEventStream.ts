@@ -25,12 +25,12 @@ export function useEventStream() {
   }, []);
 
   const connect = useCallback(
-    (query: string, handlers: StreamHandlers) => {
+    (query: string, runId: string | undefined, handlers: StreamHandlers) => {
       close();
       setStatus("connecting");
 
       try {
-        const source = openPipelineStream(query, {
+        const source = openPipelineStream(query, runId, {
           onOpen: () => {
             setStatus("open");
             handlers.onOpen?.();
