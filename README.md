@@ -188,6 +188,346 @@ The active runtime behind `/api/ask` works as follows:
 8. DeepSeek generates the answer.
 9. Semantic cache and exact cache are updated when safe.
 
+## Observability & Traceability
+
+The runtime includes a full observability layer for the RAG pipeline.
+Each request is assigned a unique `run_id` that makes it possible to trace execution from query ingestion to final answer generation.
+
+Every major step emits structured telemetry logs, which makes it easier to debug retrieval quality, latency, cache behavior, and hallucination sources without changing the API contract.
+
+### End-to-End Request Trace
+
+Each query gets a unique identifier:
+
+```text
+run_id
+```
+
+This identifier propagates through the full request path:
+
+```text
+query_received
+embedding_created
+hybrid_retrieval_started
+reranking_started
+context_build_started
+llm_generation_started
+answer_generated
+```
+
+All related events share the same `run_id`, which allows reconstructing the complete execution timeline across the API layer, retrieval layer, and LLM layer.
+
+Example telemetry log:
+
+```json
+{
+  "event": "llm_call",
+  "run_id": "6bf7c6f2c912457eb73713799620d292",
+  "model": "deepseek-chat",
+  "prompt_tokens": 4372,
+  "completion_tokens": 363,
+  "total_tokens": 4735,
+  "latency_ms": 15053,
+  "retrieved_documents": [
+    "64220091cc9230bbeff1a1ca",
+    "bcb62ddf66548c51775997e9"
+  ]
+}
+```
+
+This telemetry allows operators to analyze:
+
+- which documents influenced the answer
+- retrieval latency vs LLM latency
+- token usage and estimated cost
+- cache effectiveness
+- likely hallucination sources
+
+### Monitoring / Observability Mindset
+
+This project is built with a production observability mindset rather than a demo mindset.
+
+That means the runtime is designed so operators can answer questions such as:
+
+- Which documents actually influenced this answer?
+- Was the response served from cache or from the full pipeline?
+- Did reranking suppress a relevant chunk?
+- Was the answer slow because of retrieval or because of the LLM?
+- Did a query fail because of retrieval quality, guardrails, or model inference?
+
+In practice, this means the system already includes:
+
+- structured JSON-compatible logs
+- request-level `run_id` tracing
+- retrieval and reranking telemetry
+- LLM latency and token tracking
+- Redis-backed live pipeline event streaming
+- Redis-backed stream persistence for replay
+- cache hit/miss tracing
+
+### Observability Diagrams
+
+#### Production RAG Runtime
+
+```mermaid
+flowchart LR
+    U[User Query] --> API[FastAPI /api/ask]
+    API --> STATE[Query State + run_id]
+    STATE --> RET[Hybrid Retrieval]
+    RET --> RERANK[CrossEncoder Rerank]
+    RERANK --> CTX[Context Builder]
+    CTX --> GUARD[Query Guard]
+    GUARD --> LLM[DeepSeek LLM]
+    LLM --> RESP[Grounded Answer]
+
+    RET --> QD[Qdrant]
+    RET --> BM25[BM25]
+    API --> REDIS[Redis Cache + Stream State]
+    API --> LOGS[Structured Telemetry Logs]
+```
+
+#### Request Trace by `run_id`
+
+```mermaid
+sequenceDiagram
+    participant FE as Frontend
+    participant API as FastAPI
+    participant REDIS as Redis
+    participant RET as Retrieval
+    participant LLM as DeepSeek
+
+    FE->>API: POST /api/ask + X-Run-ID
+    API->>REDIS: publish query_received
+    API->>RET: vector retrieval + BM25 + rerank
+    RET->>REDIS: publish retrieval events
+    API->>REDIS: publish context_build_started
+    API->>LLM: generate answer
+    LLM-->>API: response + token usage
+    API->>REDIS: publish answer_generated
+    API-->>FE: answer + X-Run-ID
+```
+
+#### Streaming and Replay
+
+```mermaid
+flowchart TD
+    PIPE[Answer Pipeline] --> PUB[Redis Pub/Sub<br/>pipeline_stream:{run_id}]
+    PIPE --> HIST[Redis Stream History<br/>pipeline_run:{run_id}]
+    PUB --> FE[Live Frontend Pipeline View]
+    HIST --> REPLAY[Reconnect / replay support]
+```
+
+### Pipeline Event Streaming
+
+The system supports real-time pipeline event streaming through Redis.
+
+Each live request publishes to:
+
+```text
+pipeline_stream:{run_id}
+```
+
+Events are also persisted for replay under:
+
+```text
+pipeline_run:{run_id}
+```
+
+This enables:
+
+- live frontend progress updates
+- debugging long-running queries
+- replay after reconnect
+- isolation between simultaneous requests, even for identical query text
+
+Example pipeline events:
+
+```text
+query_received
+embedding_created
+hybrid_retrieval_started
+reranking_started
+context_build_started
+llm_generation_started
+answer_generated
+```
+
+### LLM Telemetry
+
+The LLM layer logs detailed telemetry for every model call.
+
+Captured fields include:
+
+```text
+run_id
+query
+model
+prompt_tokens
+completion_tokens
+total_tokens
+prompt_length
+response_length
+latency_ms
+retrieved_documents
+error
+```
+
+This enables monitoring of:
+
+- token usage
+- inference latency
+- prompt size
+- model cost
+- retrieval influence on the final answer
+
+If token metadata is unavailable, the system falls back to:
+
+```text
+prompt_length
+response_length
+```
+
+### Retrieval Observability
+
+The retrieval layer logs candidate documents and ranking behavior.
+
+Logged fields include:
+
+```text
+query
+top_k
+retrieved_document_ids
+rerank_scores
+final_scores
+latency_ms
+```
+
+Example:
+
+```json
+{
+  "event": "retrieval_result",
+  "run_id": "6bf7c6f2c912457eb73713799620d292",
+  "query": "What legal risks did Apple mention in its 10-K filings?",
+  "top_k": 10,
+  "retrieved_document_ids": [
+    "64220091cc9230bbeff1a1ca",
+    "bcb62ddf66548c51775997e9"
+  ],
+  "rerank_scores": [1.51, 1.95],
+  "final_scores": [1.33, 1.32],
+  "latency_ms": 6406
+}
+```
+
+This makes it possible to analyze:
+
+- retrieval quality
+- reranker behavior
+- context construction decisions
+- why specific chunks influenced the answer
+
+### LLM Guardrails
+
+Before the model is called, the pipeline applies validation and routing guards to keep inference grounded and cost-aware.
+
+Guardrails include:
+
+```text
+query routing checks
+company/form filter validation
+token-overlap validation for semantic cache
+retrieval relevance validation
+query guard before LLM generation
+```
+
+If a query fails validation, the system can:
+
+- route to a fallback answer
+- skip unnecessary LLM calls
+- return a guarded response for out-of-domain prompts
+
+This reduces hallucinations and prevents wasted inference cost.
+
+### Distributed Concurrency Control
+
+The runtime supports multi-worker deployment.
+
+Concurrency-sensitive state is coordinated through Redis, including:
+
+- exact answer cache
+- retrieval cache
+- semantic cache
+- pipeline event streaming
+- distributed LLM concurrency limiting
+- BM25 invalidation signaling
+
+This avoids:
+
+- worker-local cache corruption
+- stream mixing between requests
+- uncontrolled parallel LLM calls
+- stale worker-local retrieval state
+
+### Production Observability Features
+
+The current runtime provides:
+
+```text
+structured JSON telemetry logs
+run_id request tracing
+Redis-based pipeline event streaming
+Redis stream persistence and replay
+LLM token usage tracking
+retrieval and reranking telemetry
+latency measurements
+cache hit monitoring
+Qdrant bootstrap logging
+```
+
+These features make the system behave like a production-style RAG backend with end-to-end pipeline transparency.
+
+### Debugging a Query
+
+To debug a request:
+
+1. locate the `run_id`
+2. inspect logs for that `run_id`
+3. inspect retrieval candidates and rerank scores
+4. inspect context construction
+5. inspect `llm_call`
+6. inspect `response_generated`
+
+Typical debugging path:
+
+```text
+run_id
+ -> retrieval_result
+ -> context_built
+ -> llm_call
+ -> response_generated
+```
+
+This makes it possible to determine whether issues originate from:
+
+- retrieval
+- reranking
+- context construction
+- LLM inference
+- cache reuse
+
+### Result
+
+With these observability components, the system provides:
+
+```text
+full RAG pipeline transparency
+LLM telemetry and cost tracking
+retrieval debugging capabilities
+real-time pipeline monitoring
+production-grade traceability
+```
+
 ## Retrieval Layer
 
 The active production vector backend is Qdrant with:
@@ -225,11 +565,9 @@ The system uses three cache layers.
 
 ### 1. Exact Answer Cache
 
-File:
+Storage:
 
-```text
-data/cache/answer_cache.json
-```
+- Redis
 
 Stores:
 
@@ -385,7 +723,7 @@ If something breaks:
 5. run `python app/pipeline/answer_with_llm.py "..."`
 6. run retrieval cache and semantic cache tests
 7. inspect warm-up reports
-8. inspect `data/cache/answer_cache.json`
+8. inspect structured logs by `run_id`
 
 ## Summary
 
