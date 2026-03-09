@@ -311,10 +311,22 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    PIPE[Answer Pipeline] --> PUB[Redis Pub/Sub<br/>pipeline_stream:{run_id}]
-    PIPE --> HIST[Redis Stream History<br/>pipeline_run:{run_id}]
+    PIPE[Answer Pipeline] --> PUB[Redis Pub/Sub Channel]
+    PIPE --> HIST[Redis Stream History]
     PUB --> FE[Live Frontend Pipeline View]
-    HIST --> REPLAY[Reconnect / replay support]
+    HIST --> REPLAY[Reconnect and Replay]
+```
+
+Live stream key:
+
+```text
+pipeline_stream:{run_id}
+```
+
+Replay history key:
+
+```text
+pipeline_run:{run_id}
 ```
 
 ### Pipeline Event Streaming
