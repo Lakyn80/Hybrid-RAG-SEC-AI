@@ -5,6 +5,8 @@ import re
 from app.retrieval import resources
 
 _tokenized_corpus = None
+_tokenized_corpus_version = None
+INDEX_VERSION_KEY = "rag:index_version"
 
 
 def tokenize(text):
@@ -12,14 +14,31 @@ def tokenize(text):
 
 
 def get_tokenized_corpus() -> list[list[str]]:
-    global _tokenized_corpus
+    global _tokenized_corpus, _tokenized_corpus_version
 
-    if _tokenized_corpus is None:
+    current_index_version = resources.get_vector_index_version()
+    redis_index_version = None
+
+    try:
+        client = resources.get_redis_client()
+        redis_index_version = client.get(INDEX_VERSION_KEY)
+        if redis_index_version != current_index_version:
+            client.set(INDEX_VERSION_KEY, current_index_version)
+            redis_index_version = current_index_version
+    except Exception:
+        redis_index_version = current_index_version
+
+    if (
+        _tokenized_corpus is None
+        or _tokenized_corpus_version != current_index_version
+        or _tokenized_corpus_version != redis_index_version
+    ):
         metadata_df = resources.get_metadata_df()
         _tokenized_corpus = [
             tokenize(doc)
             for doc in metadata_df["chunk_text"].astype(str).tolist()
         ]
+        _tokenized_corpus_version = current_index_version
 
     return _tokenized_corpus
 

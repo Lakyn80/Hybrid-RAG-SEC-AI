@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, Response
 from pydantic import BaseModel
 
 from app.api.cache_admin import router as cache_admin_router
@@ -63,12 +63,19 @@ def health():
 
 
 @app.post("/api/ask")
-def ask(data: AskRequest):
+def ask(
+    data: AskRequest,
+    response: Response,
+    x_run_id: str | None = Header(default=None, alias="X-Run-ID"),
+):
     result = answer_query(
         data.query,
         company_filter=data.company,
         form_filter=data.form,
+        run_id=x_run_id,
     )
+    if result.get("run_id"):
+        response.headers["X-Run-ID"] = str(result["run_id"])
 
     return {
         "query": result["query"],

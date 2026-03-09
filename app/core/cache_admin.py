@@ -4,6 +4,7 @@ import os
 from app.retrieval import resources
 
 REDIS_CACHE_PREFIXES = (
+    "answer:v1",
     "retrieval:v2",
     "semantic:v1:bucket",
     "semantic:v1:entry",
@@ -16,9 +17,10 @@ REDIS_CACHE_PREFIXES = (
 
 def clear_answer_cache_file(cache_file: str) -> bool:
     try:
-        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
-        with open(cache_file, "w", encoding="utf-8") as f:
-            json.dump({}, f, ensure_ascii=False, indent=2)
+        client = resources.get_redis_client()
+        keys = list(client.scan_iter(match="answer:v1:*"))
+        if keys:
+            client.delete(*keys)
         return True
     except Exception:
         return False

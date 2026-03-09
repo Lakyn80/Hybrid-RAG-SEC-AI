@@ -1,59 +1,104 @@
 # Hybrid RAG SEC AI - Development README
 
-This document is the internal engineering log for the project.
+This document is the internal engineering reference for the project.
 
 Use it for:
-- preserving the real development history
-- handing project context to another GPT chat or engineer
+- preserving the real technical state of the system
+- handing the project to another engineer or GPT chat
 - recording architectural decisions and why they were made
-- appending future milestones without rewriting the whole story
+- keeping operational context separate from the presentation-facing `README.md`
 
 This file is intentionally different from `README.md`.
 
-- `README.md` is the presentation / project-facing document
-- `README_DEV.md` is the development history and technical continuity document
+- `README.md` = product / presentation document
+- `README_DEV.md` = engineering continuity, runtime truth, operational notes
 
-## 1. Project Purpose
+## 1. Project Identity
 
-The project is a production-oriented Hybrid RAG system for question answering over SEC filings.
+Project name:
+- `Hybrid RAG SEC AI`
 
-Core target:
-- answer questions using filing text only
-- keep answers grounded in retrieved evidence
-- preserve source traceability
-- support production-style caching, evaluation, and future scale
+Purpose:
+- answer questions over SEC filings using Retrieval-Augmented Generation
+- keep answers grounded in filing text
+- keep source traceability
+- support production-oriented runtime behavior, caching, evaluation, observability, and deployment
 
-The system is not intended to be a toy demo. It is being developed as a modular architecture that can scale toward larger SEC datasets.
+This is not a notebook experiment or toy demo. It is a modular production-style RAG system.
 
-## 2. Current Runtime Snapshot
+## 2. Current High-Level Architecture
 
-Current runtime flow:
+Backend:
+- FastAPI
+- LangGraph orchestration
+- Qdrant vector retrieval
+- BM25 lexical retrieval
+- CrossEncoder reranking
+- DeepSeek LLM via OpenAI-compatible API
+- Redis for shared cache, shared stream state, shared concurrency coordination
+
+Frontend:
+- Next.js App Router
+- React
+- TailwindCSS
+- live execution view
+- execution log
+- answer panel
+- query history
+- suggested questions
+- lightweight telemetry display after answer completion
+
+Infrastructure:
+- Docker / Docker Compose
+- Redis
+- Qdrant
+- GitHub Actions CI/CD
+- Nginx / domain routing in deployment environment
+
+## 3. Current Runtime Flow
+
+Current answer flow:
 
 ```text
-FastAPI
--> LangGraph orchestration
--> exact cache
--> semantic cache
--> retrieval cache
--> Qdrant vector retrieval
--> BM25 lexical retrieval
--> hybrid merge
--> CrossEncoder rerank
--> context builder
+POST /api/ask
+-> FastAPI
+-> answer_service.answer_query()
+-> query routing
+-> exact answer cache lookup
+-> semantic cache lookup
+-> hybrid retrieval (Qdrant + BM25)
+-> rerank
+-> context build
+-> query guard
 -> DeepSeek LLM
+-> response formatting
+-> cache write
 -> response
 ```
 
-Current active production choices:
-- vector backend: Qdrant
-- lexical retrieval: BM25
-- reranker: CrossEncoder
-- LLM provider: DeepSeek
-- secret policy: only `DEEPSEEK_API_KEY`
-- API contract: preserved
-- architecture style: modular, not collapsed
+Live execution flow:
 
-Current structure that must remain stable:
+```text
+Frontend generates run_id
+-> opens /api/stream?run_id=...
+-> sends POST /api/ask with X-Run-ID
+-> backend publishes pipeline events under run_id
+-> Redis stream + Pub/Sub carry events
+-> frontend updates execution log and pipeline view
+```
+
+Important:
+- `/api/ask` response schema stays stable:
+  - `query`
+  - `answer`
+  - `mode`
+  - `sources`
+  - `cache_hit`
+- `run_id` is carried via `X-Run-ID` header, not in the public JSON response contract
+
+## 4. Stable Module Structure
+
+This structure is intentionally preserved:
 
 ```text
 app/services
@@ -61,337 +106,512 @@ app/retrieval
 app/llm
 app/pipeline
 app/router
+app/api
 tests
+frontend
 ```
 
-## 3. Non-Negotiable Engineering Rules
-
-These rules have been enforced during development and should continue to be enforced:
-
+Engineering rule:
+- do not collapse modules together
 - do not refactor architecture for style
-- do not collapse working modules together
-- do not change API contract unless explicitly required
-- do not introduce new secret names
-- keep using only `DEEPSEEK_API_KEY`
-- preserve LangGraph-based answer flow
-- keep retrieval modular
-- keep caching layered
-- keep evaluation scripts working after each significant change
+- do not change API contracts casually
 
-## 4. Development History
+## 5. What the System Is Designed to Answer
 
-This section reconstructs the actual development path from the repository state and commit history.
+The system is designed to answer filing-based questions about indexed SEC documents.
 
-### Phase 0 - Repository bootstrap
+Primary supported domains:
+- risk factors
+- legal proceedings
+- litigation
+- regulatory risks
+- governance
+- board / proxy topics
+- executive compensation
+- financial results
+- revenue / profitability / liquidity
+- cybersecurity risks
+- supply chain risks
+- global operations risks
+- product defect risks
+- acquisition / transaction related disclosures
 
-Commit anchor:
-- `a1a03c7` - `Initialize public repo with FastAPI API and CI`
+Primary indexed company scope at the current stage:
+- Apple
+- NVIDIA
+- Alphabet
 
-What happened:
-- initial repository structure was created
-- FastAPI entrypoint and base application layout were established
-- CI/public repo baseline was introduced
+Primary filing forms handled:
+- `10-K`
+- `10-Q`
+- `8-K`
+- `DEF 14A`
+- `DEFA14A`
+- `SC 13G`
+- `SC 13G/A`
 
-Why it mattered:
-- this created the stable base for later RAG work
-- from the start the project was positioned as an application, not just a notebook or experiment
+SEC form synonyms currently supported in query routing:
+- `annual report` -> `10-K`
+- `quarterly report` -> `10-Q`
+- `proxy statement` -> `DEF 14A`
+- `current report` -> `8-K`
 
-### Phase 1 - Baseline Hybrid RAG foundation
+## 6. Data Layer and Storage
 
-Commit anchor:
-- `c8217b5` - `chore: checkpoint current hybrid rag state before production rollout`
+The project already uses Parquet for core SEC datasets.
 
-What happened:
-- ingestion pipeline was established
-- SEC HTML download, parsing, cleaning, and chunking workflow were added
-- baseline retrieval utilities were added
-- FAISS-era utilities remained in the repo as legacy/offline tooling
-- the project became a real end-to-end SEC filing QA system
+Important data artifacts:
+- `data/clean/filings_clean.parquet`
+- `data/clean/filings_parsed.parquet`
+- `data/clean/filings_chunks.parquet`
+- `data/vectorstore/faiss/filings_chunks_metadata.parquet`
 
-Key modules that came out of this stage:
-- `app/pipeline/download_filing_html.py`
-- `app/pipeline/parse_filing_html.py`
-- `app/pipeline/data_cleaner.py`
-- `app/pipeline/chunk_filings.py`
-- `app/pipeline/build_faiss_index.py`
-- `app/pipeline/search_faiss.py`
+Supporting small lookup data may still exist as CSV, for example:
+- `data/companies.csv`
 
-Why it mattered:
-- the project moved from skeleton state to working retrieval over filing chunks
-- offline data processing became reproducible
+Design rule:
+- large analytical / runtime datasets should live in Parquet
+- small helper or lookup tables may remain CSV if there is no runtime penalty
 
-### Phase 2 - Production retrieval architecture
+## 7. Retrieval Architecture
 
-Commit anchor:
-- `d027133` - `feat: add production qdrant caching and eval tooling`
+Current active retrieval design:
+- vector retrieval from Qdrant
+- lexical retrieval from BM25
+- hybrid candidate merge
+- CrossEncoder rerank
+- blended final ranking policy
+- context diversity selection before answer generation
 
-What happened:
-- Qdrant became the active vector backend for runtime retrieval
-- Redis retrieval cache was introduced
-- semantic cache was introduced with safety boundaries
-- exact answer cache remained in place
-- hybrid retrieval was formalized as Qdrant + BM25 + rerank
-- synthetic evaluation tooling and warm-up utilities were added
-
-Key production modules introduced or stabilized:
+Important runtime modules:
 - `app/retrieval/qdrant_store.py`
-- `app/retrieval/retrieval_cache.py`
-- `app/retrieval/resources.py`
-- `app/services/semantic_cache.py`
-- `app/pipeline/build_qdrant_index.py`
-- `app/pipeline/generate_synthetic_eval_dataset.py`
-- `app/pipeline/warm_up_runtime.py`
-- `tests/run_retrieval_cache_eval.py`
-- `tests/run_semantic_cache_eval.py`
-- `tests/run_ragas_eval.py`
-- `tests/run_synthetic_dataset_check.py`
-- `tests/run_warmup_validation.py`
-
-Important decisions made here:
-- Qdrant is the long-term vector backend direction
-- FAISS stays only as legacy/offline utility unless explicitly reactivated
-- cache key boundaries must include company/form scope
-- semantic cache must not be allowed to cross company/form boundaries
-
-Why it mattered:
-- this was the main productionization milestone
-- the system gained persistence, layered caching, and evaluation-driven development
-
-### Phase 3 - Grounding and retrieval safety hardening
-
-Commit anchor:
-- `a57588e` - `Improve grounding and SEC form handling`
-
-What happened:
-- answer prompt was tightened for grounded SEC QA
-- context formatting was cleaned up to reduce noise
-- final context was reduced to top 6 chunks
-- answer post-processing was added to keep responses concise
-- SEC form detection was corrected to trigger only on explicit form mentions
-- aggressive heuristics such as forcing `10-K` from vague phrases were removed
-- grounding regression tests were added
-
-Files affected in this stage:
-- `app/llm/langchain_chain.py`
-- `app/router/query_router.py`
-- `app/services/answer_service.py`
-- `tests/test_answer_grounding.py`
-- `tests/test_form_detection.py`
-
-Why it mattered:
-- retrieval correctness was protected from false form forcing
-- answer quality improved without changing the architecture
-- the system became safer for mixed-form queries
-
-### Phase 4 - Performance stabilization
-
-Commit anchor:
-- `c9029da` - `Optimize RAG pipeline: reduce retrieval size, lower LLM concurrency, stabilize load test`
-
-What happened:
-- performance tuning focused on response stability and load behavior
-- retrieval/LLM settings were adjusted to improve runtime behavior under load
-
-Why it mattered:
-- this stage shifted from correctness to operational stability
-- it established the project as something testable under repeated traffic, not just single-query demos
-
-### Phase 5 - Documentation pass
-
-Commit anchors:
-- `f9c7724` - `Revise README for production state and architecture details`
-- `eecc5b6` - `Update README with full project documentation`
-
-What happened:
-- `README.md` was expanded into a project-facing explanation of architecture and usage
-- operational and architecture details were documented for presentation and handoff
-
-Why it mattered:
-- the repo became easier to present externally
-- the need for a second, development-focused README became obvious
-
-### Phase 6 - Development continuity documentation
-
-Current goal of this file:
-- provide the missing internal development narrative
-- capture the real sequence of decisions
-- create a living place where future engineering milestones can be appended
-
-## 5. Current Technical Map
-
-### API and orchestration
-
-- `app/main.py`
-  - FastAPI entrypoint
-- `app/services/answer_service.py`
-  - main LangGraph runtime orchestration
-  - prepare, retrieval, context build, LLM call, formatting
-- `app/router/query_router.py`
-  - query classification and explicit SEC form detection
-
-### Retrieval
-
-- `app/retrieval/qdrant_store.py`
-  - Qdrant search and payload filtering
 - `app/retrieval/bm25_retriever.py`
-  - lexical retrieval
 - `app/retrieval/reranker.py`
-  - CrossEncoder reranking
-- `app/retrieval/retrieval_cache.py`
-  - Redis retrieval cache
 - `app/retrieval/resources.py`
-  - lazy-loaded shared retrieval resources
+- `app/services/answer_service.py`
 
-### LLM
+Important production design decisions:
+- Qdrant is the active production vector backend
+- BM25 remains because SEC questions benefit from lexical matching
+- reranker is not treated as the sole signal anymore
+- final ranking uses blended scoring to reduce boilerplate dominance
 
+## 8. Query Routing and Decomposition
+
+Current routing behavior:
+- single-company queries run normally
+- multi-company compare queries are decomposed into company-specific subqueries
+- subqueries run through the existing answer pipeline independently
+- outputs are aggregated into one answer string without changing API schema
+
+Current routing modules:
+- `app/router/query_router.py`
+- `app/services/answer_service.py`
+
+Important routing behavior:
+- compare queries can split into Apple / NVIDIA / Alphabet subqueries if multiple supported companies are detected
+- explicit SEC form detection takes precedence
+- synonym mapping is used if the user names a filing by natural-language label
+- if no form is explicit or inferable by synonym, retrieval can search across all forms
+
+## 9. Query Guard
+
+The system now has a frontend prompt guidance layer and a backend query guard.
+
+Frontend:
+- encourages document-domain questions only
+- warns on obvious off-domain prompts
+- does not block submission
+
+Backend:
+- `app/services/query_guard.py`
+- inserted after `context build` and before `LLM generation`
+- blocks obviously irrelevant questions before tokens are spent
+
+Blocked response behavior:
+- answer: `This system answers questions only about SEC filings and company disclosures.`
+- sources: `Sources:\n- query_guard`
+
+This preserves API response shape while preventing wasted LLM calls.
+
+## 10. Caching and Shared State
+
+Current cache layers:
+
+1. Exact answer cache
+- Redis
+- key pattern:
+  - `answer:v1:{cache_key}`
+- TTL:
+  - `86400`
+
+2. Semantic cache
+- Redis
+- strict scope isolation by company/form/query scope
+
+3. Retrieval cache
+- Redis
+- keyed by query + filters + index version + ranking version
+
+Important runtime principle:
+- worker-shared state must not live only in one process
+- request-relevant shared state uses Redis
+
+Current worker-safe state moved out of process:
+- exact answer cache
+- retrieval cache
+- semantic cache
+- live stream event history
+- live stream Pub/Sub channel
+- global LLM concurrency limiter
+- BM25 index version invalidation signal
+
+## 11. Streaming and Multi-Worker Safety
+
+The streaming system was upgraded specifically for multi-worker deployment.
+
+Current design:
+- frontend generates or carries a `run_id`
+- `run_id` goes into:
+  - `X-Run-ID` header for `/api/ask`
+  - `run_id` query param for `/api/stream`
+- backend publishes events under:
+  - `pipeline_stream:{run_id}`
+- event history is persisted under:
+  - `pipeline_run:{run_id}`
+
+Why this matters:
+- two identical queries from different users no longer share a stream
+- reconnect can replay event history
+- subquery events for multi-company compare go into the same parent run
+- behavior is safe under Gunicorn multi-worker deployment
+
+Core files:
+- `app/services/stream_service.py`
+- `app/router/stream_router.py`
+- `frontend/hooks/useEventStream.ts`
+- `frontend/lib/streamClient.ts`
+- `frontend/hooks/useAskPipeline.ts`
+
+## 12. LLM Layer
+
+Current LLM runtime:
+- model provider secret: `DEEPSEEK_API_KEY`
+- provider access through OpenAI-compatible endpoint
+- no extra secret names are allowed
+- prompt is tuned for strict grounding
+
+Core file:
 - `app/llm/langchain_chain.py`
-  - grounded answer generation prompt and LLM call setup
-- `app/llm/synthetic_eval_chain.py`
-  - synthetic evaluation generation support
 
-### Offline pipeline
+Current answer style design:
+- human-readable analyst summary
+- concise
+- grounded in context
+- no external knowledge
+- no invented facts
+- no excerpt numbers in final user-facing answer
 
-- `app/pipeline/download_filing_html.py`
-- `app/pipeline/parse_filing_html.py`
-- `app/pipeline/data_cleaner.py`
-- `app/pipeline/chunk_filings.py`
-- `app/pipeline/build_qdrant_index.py`
-- `app/pipeline/generate_synthetic_eval_dataset.py`
-- `app/pipeline/warm_up_runtime.py`
+Current concurrency control:
+- Redis-based distributed limiter
+- shared across workers
+- prevents per-process-only concurrency bugs
 
-### Caching
+## 13. Monitoring / Observability Mindset
 
-- exact answer cache:
-  - `data/cache/answer_cache.json`
-- retrieval cache:
-  - Redis
-- semantic cache:
-  - Redis with scope isolation
+Yes, this is now part of the project and it should stay part of the project.
 
-### Tests and validation
+The intended mindset is:
+- trace every request
+- correlate retrieval and LLM behavior
+- observe latency and token usage
+- make debugging possible from logs without guessing
 
+### Current observability capabilities
+
+Every request is expected to have a `run_id`.
+
+Current structured telemetry covers:
+- pipeline step progression
+- retrieval candidates
+- rerank output
+- final retrieval result
+- built context
+- LLM call metrics
+- generated response summary
+- LLM errors
+- query guard blocks
+
+Important structured log events currently emitted:
+- `pipeline_step`
+- `request_received`
+- `retrieval_candidates`
+- `rerank_result`
+- `retrieval_result`
+- `context_built`
+- `llm_call`
+- `response_generated`
+- `llm_error`
+- `QUERY_BLOCKED_BY_GUARD`
+- `question_bank_static`
+
+### What is logged for LLM calls
+
+Current telemetry fields include:
+- `run_id`
+- `query`
+- `model`
+- `prompt_tokens`
+- `completion_tokens`
+- `total_tokens`
+- fallback `prompt_length`
+- `response_length`
+- `latency_ms`
+- `retrieved_documents`
+- `error` if the call fails
+
+### What is logged for retrieval
+
+Current retrieval trace includes:
+- `run_id`
+- `query`
+- `top_k`
+- `retrieved_document_ids`
+- `rerank_scores`
+- `final_scores`
+- latency for rerank / retrieval stages
+
+### Practical observability workflow
+
+When debugging:
+- check `run_id`
+- inspect `retrieval_candidates`
+- inspect `rerank_result`
+- inspect `retrieval_result`
+- inspect `llm_call`
+- inspect `response_generated`
+
+This is the current production observability pattern.
+
+### What we do NOT yet have
+
+The project currently has:
+- strong structured logs
+- request traceability
+- stream event traceability
+
+The project does not yet have a full metrics stack such as:
+- Prometheus
+- Grafana
+- OpenTelemetry collector pipeline
+
+That is acceptable for the current stage, but the logging/traceability mindset is already established and should not be removed.
+
+## 14. Frontend Runtime Behavior
+
+Frontend lives in:
+- `frontend/`
+
+Key UI features:
+- prompt panel
+- suggested questions
+- query history with replayable local snapshot state
+- pipeline view
+- execution log
+- answer block
+- small LLM run info panel under the answer
+
+Important frontend behavior:
+- query history stores snapshots locally and can reopen them without rerunning backend
+- `Run again` triggers a fresh backend request
+- `Delete cache` calls backend cache clear
+- `Refresh` button is intentionally just a hard page reload helper
+- suggested questions are fixed curated questions, not LLM-generated
+
+Important frontend files:
+- `frontend/components/Dashboard.tsx`
+- `frontend/components/PromptPanel.tsx`
+- `frontend/components/QueryHistory.tsx`
+- `frontend/components/ExecutionLog.tsx`
+- `frontend/components/PipelineVisualizer.tsx`
+- `frontend/components/AnswerResult.tsx`
+- `frontend/components/SuggestedQuestions.tsx`
+- `frontend/hooks/useAskPipeline.ts`
+- `frontend/lib/api.ts`
+
+## 15. Question Bank
+
+Question bank used in frontend suggestions:
+- is static and curated
+- is not generated by LLM at request time
+- is designed to stay inside supported indexed company scope
+
+Relevant files:
+- `app/data/question_bank.py`
+- `app/services/question_bank_service.py`
+- `app/api/question_bank.py`
+
+Reason:
+- no latency spike
+- no suggestion / guard mismatch
+- no off-domain or unsupported-company suggestions
+
+## 16. Deployment and Bootstrap
+
+Current deployment style:
+- GitHub Actions CI
+- GitHub Actions CD
+- deploy to VPS via SSH
+- Docker Compose restart/build on target server
+
+Important files:
+- `.github/workflows/ci.yml`
+- `.github/workflows/deploy.yml`
+- `docker-compose.yml`
+
+Important current deployment behavior:
+- `rag-api` starts through:
+  - `python app/scripts/bootstrap_qdrant.py && gunicorn ...`
+- deploy workflow also explicitly runs:
+  - `docker compose exec -T rag-api python app/scripts/bootstrap_qdrant.py`
+
+Why this matters:
+- if Qdrant collection is missing after deploy, bootstrap runs automatically
+- manual recovery after deploy should not be needed just to rebuild the index
+
+Qdrant bootstrap file:
+- `app/scripts/bootstrap_qdrant.py`
+
+Qdrant persistence:
+- Docker volume:
+  - `qdrant_data:/qdrant/storage`
+
+## 17. Evaluation and Test Tooling
+
+Current test and evaluation surface includes:
+- retrieval eval
+- RAGAS eval
+- retrieval cache eval
+- semantic cache eval
+- synthetic dataset validation
+- warm-up validation
+- routing unit tests
+- question bank unit tests
+- query guard unit tests
+
+Important scripts:
 - `tests/run_rag_eval.py`
 - `tests/run_ragas_eval.py`
 - `tests/run_retrieval_cache_eval.py`
 - `tests/run_semantic_cache_eval.py`
 - `tests/run_synthetic_dataset_check.py`
 - `tests/run_warmup_validation.py`
-- `tests/test_answer_grounding.py`
+- `tests/run_full_rag_eval.py`
+
+Important unit tests:
 - `tests/test_form_detection.py`
+- `tests/test_query_routing.py`
+- `tests/test_query_guard.py`
+- `tests/test_question_bank.py`
 
-## 6. Important Design Decisions and Why
+## 18. Known Constraints and Real Limitations
 
-### Qdrant was chosen as the final vector backend
+Current hard constraints:
+- do not change `/api/ask` schema casually
+- do not introduce new LLM secret names
+- keep using only `DEEPSEEK_API_KEY`
+- do not weaken company/form scope isolation in cache logic
+- keep modular structure stable
+- do not casually refactor working modules
 
-Reason:
-- production persistence
-- payload metadata filtering
-- better long-term direction than continuing to optimize runtime FAISS for large scale
+Known practical limitations:
+- answer quality still depends on retrieval coverage quality
+- compare answers are routed and aggregated, but can still need further formatting improvement for perfect analyst-style comparisons
+- companies not present in index cannot be answered reliably
+- logs are strong, but external metrics stack is not yet installed
+- frontend deploys can look stale if browser keeps old bundle; hard refresh may still be needed after deployment
 
-Impact:
-- vector retrieval is now production-oriented
-- runtime filtering can be enforced server-side
+## 19. Current Engineering Priorities
 
-### BM25 was preserved
+Current priorities, in order:
+- keep retrieval correctness stable
+- keep cache scope safe
+- keep multi-worker behavior stable
+- keep observability strong enough for debugging
+- keep deployment automatic and recoverable
+- avoid accidental regressions in frontend behavior during backend work
 
-Reason:
-- lexical retrieval still matters for SEC terminology, form names, legal wording, and exact filings language
+## 20. Development History Summary
 
-Impact:
-- hybrid retrieval remains more robust than pure vector search
+This is the compact version of the real project evolution.
 
-### Layered caching was kept
+### Phase 0 - Repository bootstrap
+- FastAPI base app
+- CI baseline
+- initial public repository structure
 
-Order:
-- exact answer cache
+### Phase 1 - Baseline SEC RAG foundation
+- SEC filing download / parse / clean / chunk pipeline
+- early vector tooling
+- working end-to-end filing QA baseline
+
+### Phase 2 - Production retrieval architecture
+- Qdrant became active vector backend
+- Redis retrieval cache
 - semantic cache
-- retrieval cache
+- hybrid retrieval stabilized
+- evaluation tooling added
 
-Reason:
-- different cache layers solve different latency/cost problems
-- semantic cache can accelerate paraphrases
-- retrieval cache avoids repeated retrieval work
+### Phase 3 - Grounding and retrieval safety
+- stricter answer prompt
+- safer form handling
+- less noisy context shaping
+- grounding tests
 
-### Semantic cache safety was intentionally strict
+### Phase 4 - Runtime stability
+- retrieval / rerank tuning
+- load stability improvements
+- startup warm-up
 
-Rules:
-- disabled if effective company filter is missing
-- disabled if effective form filter is missing
+### Phase 5 - Frontend dashboard and live execution UI
+- Next.js frontend
+- live execution stream
+- query history
+- suggested questions
+- answer telemetry panel
 
-Reason:
-- this prevents cross-company and cross-form contamination
-- this matters especially for SEC retrieval, where incorrect entity or form scope is a serious answer-quality failure
+### Phase 6 - Multi-worker safety and observability
+- Redis-backed shared state
+- run_id-based stream isolation
+- event persistence for stream replay
+- Redis answer cache
+- structured retrieval / LLM logs
+- distributed LLM limiter
+- Qdrant bootstrap on deploy
 
-### Form filter inference was narrowed to explicit mentions only
+## 21. How to Handoff This Project
 
-Reason:
-- heuristic mapping such as `annual report -> 10-K` caused false restriction of retrieval
-- broad financial questions often need cross-form retrieval unless the user explicitly names a filing form
-
-Impact:
-- retrieval is safer across mixed query styles
-
-### Prompt and context shaping are used before larger architectural changes
-
-Reason:
-- answer quality can often improve significantly without destabilizing retrieval or cache layers
-
-Impact:
-- better faithfulness and answer relevancy without touching API or runtime contracts
-
-## 7. Current Verified Baseline
-
-Latest verified local baseline from the current development cycle:
-
-- retrieval evaluation: `hit_at_k = 1.0`
-- RAGAS faithfulness: `0.8256`
-- RAGAS answer relevancy: `0.7669`
-- retrieval cache eval:
-  - first run miss
-  - second run hit
-  - latency improved from roughly `13165 ms` to `1.41 ms`
-- semantic cache eval:
-  - seed query served by LLM
-  - paraphrase hit from semantic cache
-  - missing-filter case did not use semantic cache
-  - wrong-scope case did not use semantic cache
-
-Interpretation:
-- retrieval is stable
-- answer relevancy is in a good range
-- faithfulness improved but still remains an area for future hardening
-
-## 8. Known Constraints
-
-- API schema must remain stable unless there is an explicit product decision
-- `DEEPSEEK_API_KEY` is the only allowed LLM secret
-- Docker stack should not be changed casually
-- cache logic must not be weakened in ways that break scope safety
-- retrieval correctness is more important than overly aggressive heuristics
-- README for presentation and README for development must stay separate
-
-## 9. How to Use This File in Future Chats
-
-When handing this project to another GPT chat, provide:
+When handing this repository to another engineer or GPT chat, provide:
 - `README.md`
 - `README_DEV.md`
-- the current task
-- any exact constraints for the next change
+- current task
+- exact constraints for the next change
+- if possible, one recent `run_id` and matching backend logs
 
-This file is especially useful for telling the next agent:
-- what has already been tried
-- what architectural decisions are fixed
-- what must not be broken
-- which metrics matter
+That is enough to reconstruct:
+- what the system does
+- how the system is deployed
+- how state is shared
+- where to debug retrieval vs LLM vs streaming vs cache
 
-## 10. How to Append New Development Steps
+## 22. Append-Only Update Template
 
 Use append-only updates whenever possible.
 
-Recommended entry template:
+Template:
 
 ```text
-## YYYY-MM-DD - Short milestone title
+## YYYY-MM-DD - Milestone title
 
 Goal
 - what was being fixed or added
@@ -407,18 +627,21 @@ Validation
 - tests run
 - metrics observed
 
+Observability
+- what logs, metrics, or traces were added or relied on
+
 Risks / open issues
 - what still needs attention
 
 Next step
-- the most likely next engineering action
+- likely next engineering action
 ```
 
-## 11. Next Append Section
+## 23. Next Append Section
 
 Add all future milestones below this line.
 
-## 2026-03-08 - Placeholder for next development milestone
+## 2026-03-09 - Placeholder for next development milestone
 
 Goal
 - pending
@@ -430,6 +653,9 @@ Reason
 - pending
 
 Validation
+- pending
+
+Observability
 - pending
 
 Risks / open issues

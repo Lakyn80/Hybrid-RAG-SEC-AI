@@ -10,10 +10,12 @@ function getBackendBaseUrl() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.text();
+    const runId = request.headers.get("x-run-id")?.trim();
     const upstream = await fetch(`${getBackendBaseUrl()}/api/ask`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(runId ? { "X-Run-ID": runId } : {}),
       },
       body,
       cache: "no-store",
@@ -26,6 +28,9 @@ export async function POST(request: NextRequest) {
       headers: {
         "Content-Type": upstream.headers.get("content-type") || "application/json",
         "Cache-Control": "no-store",
+        ...(upstream.headers.get("x-run-id")
+          ? { "X-Run-ID": String(upstream.headers.get("x-run-id")) }
+          : {}),
       },
     });
   } catch (error) {

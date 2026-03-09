@@ -9,14 +9,23 @@ function getBackendBaseUrl() {
 
 export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get("query")?.trim();
+  const runId = request.nextUrl.searchParams.get("run_id")?.trim();
 
-  if (!query) {
-    return Response.json({ error: "Missing query parameter." }, { status: 400 });
+  if (!query && !runId) {
+    return Response.json({ error: "Missing query or run_id parameter." }, { status: 400 });
   }
 
   try {
+    const params = new URLSearchParams();
+    if (query) {
+      params.set("query", query);
+    }
+    if (runId) {
+      params.set("run_id", runId);
+    }
+
     const upstream = await fetch(
-      `${getBackendBaseUrl()}/api/stream?${new URLSearchParams({ query }).toString()}`,
+      `${getBackendBaseUrl()}/api/stream?${params.toString()}`,
       {
         method: "GET",
         headers: {

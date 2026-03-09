@@ -108,4 +108,5 @@ jobs:
           echo "Deploying with FRONTEND_PORT=$FRONTEND_PORT"
           docker compose "${COMPOSE_ENV_ARGS[@]}" down
           docker compose "${COMPOSE_ENV_ARGS[@]}" up -d --build
+          docker compose "${COMPOSE_ENV_ARGS[@]}" exec -T rag-api python app/scripts/bootstrap_qdrant.py
           EOF

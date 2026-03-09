@@ -31,11 +31,12 @@ services:
       QDRANT_COLLECTION_ALIAS: sec_filings_chunks_current
     restart: unless-stopped
     command: >
+      sh -c "python app/scripts/bootstrap_qdrant.py &&
       gunicorn app.main:app
       -k uvicorn.workers.UvicornWorker
       -w 2
       -t 300
-      -b 0.0.0.0:8021
+      -b 0.0.0.0:8021"
 
   rag-frontend:
     build:

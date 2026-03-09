@@ -8,6 +8,7 @@ import re
 import json
 import time
 import hashlib
+from uuid import uuid4
 from typing import Any, Callable, TypedDict
 
 import numpy as np
@@ -16,7 +17,7 @@ from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END
 
 from app.core.cache_stats import increment_cache_stat
-from app.core.logger import get_logger
+from app.core.logger import get_logger, log_structured
 from app.retrieval import resources as retrieval_resources
 from app.retrieval.reranker import MODEL_NAME as RERANKER_MODEL_NAME, rerank
 from app.retrieval.retrieval_cache import (
@@ -43,9 +44,6 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 ENV_FILE = os.path.join(BASE_DIR, ".env")
 INDEX_FILE = os.path.join(BASE_DIR, "data", "vectorstore", "faiss", "filings_chunks.index")
 METADATA_FILE = os.path.join(BASE_DIR, "data", "vectorstore", "faiss", "filings_chunks_metadata.parquet")
-CACHE_DIR = os.path.join(BASE_DIR, "data", "cache")
-CACHE_FILE = os.path.join(CACHE_DIR, "answer_cache.json")
-
 load_dotenv(dotenv_path=ENV_FILE, override=False)
 
 MODEL_NAME = "all-MiniLM-L6-v2"
@@ -58,6 +56,8 @@ RANKING_POLICY_VERSION = "content_rank_v3"
 
 LLM_CACHE_TTL_SECONDS = 60 * 60 * 24
 FALLBACK_CACHE_TTL_SECONDS = 60 * 10
+ANSWER_CACHE_PREFIX = "answer:v1"
+ANSWER_CACHE_TTL_SECONDS = 60 * 60 * 24
 
 RISK_HINT_WORDS = {
     "risk", "risks", "risky", "adverse", "adversely", "uncertain", "uncertainty",
@@ -259,10 +259,17 @@ def format_sources(results_df: pd.DataFrame) -> str:
 
 
 def emit_pipeline_event(state: "GraphState", event_name: str) -> None:
+    log_structured(
+        logger,
+        "pipeline_step",
+        run_id=state.get("run_id"),
+        query=state.get("query"),
+        step=str(event_name).strip(),
+    )
     try:
         from app.services.stream_service import publish_pipeline_event
 
-        publish_pipeline_event(state.get("query", ""), str(event_name).strip())
+        publish_pipeline_event(state.get("run_id", ""), str(event_name).strip())
     except Exception as exc:
         logger.info(f"stream_event_publish_failed={exc}")
 
@@ -710,6 +717,55 @@ def log_top_chunk_scores(results_df: pd.DataFrame, label: str, limit: int = 5) -
     logger.info(f"{label}={json.dumps(entries, ensure_ascii=False)}")
 
 
+def build_document_id(row: pd.Series | dict[str, Any]) -> str:
+    data = row if isinstance(row, dict) else row.to_dict()
+    chunk_hash = str(data.get("chunk_hash") or "").strip()
+    if chunk_hash:
+        return chunk_hash
+
+    vector_id = str(data.get("vector_id") or "").strip()
+    if vector_id:
+        return vector_id
+
+    accession_number = str(data.get("accession_number") or "").strip()
+    chunk_index = str(data.get("chunk_index") or "").strip()
+    if accession_number and chunk_index:
+        return f"{accession_number}:{chunk_index}"
+
+    filing_url = str(data.get("filing_url") or "").strip()
+    if filing_url and chunk_index:
+        return f"{filing_url}#{chunk_index}"
+
+    return hashlib.sha256(str(data.get("chunk_text") or "").encode("utf-8")).hexdigest()[:16]
+
+
+def summarize_retrieval_trace(results_df: pd.DataFrame, limit: int = 10) -> tuple[list[str], list[float], list[float]]:
+    if results_df is None or results_df.empty:
+        return [], [], []
+
+    sort_columns = [
+        column
+        for column in ("final_score", "rerank_score", "retrieval_signal", "score")
+        if column in results_df.columns
+    ]
+    sorted_df = results_df.sort_values(
+        by=sort_columns or ["chunk_text"],
+        ascending=[False] * len(sort_columns) if sort_columns else [True],
+        kind="mergesort",
+    )
+
+    document_ids: list[str] = []
+    rerank_scores: list[float] = []
+    final_scores: list[float] = []
+
+    for _, row in sorted_df.head(limit).iterrows():
+        document_ids.append(build_document_id(row))
+        rerank_scores.append(safe_round_score(row.get("rerank_score", 0.0)))
+        final_scores.append(safe_round_score(row.get("final_score", row.get("score", 0.0))))
+
+    return document_ids, rerank_scores, final_scores
+
+
 def apply_blended_ranking(
     results_df: pd.DataFrame,
     query: str,
@@ -899,22 +955,92 @@ def build_cache_key(query: str, company_filter: str | None, form_filter: str | N
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def load_cache() -> dict:
-    if not os.path.exists(CACHE_FILE):
-        return {}
+def build_answer_cache_key(cache_key: str) -> str:
+    return f"{ANSWER_CACHE_PREFIX}:{cache_key}"
 
+
+def load_cache() -> dict:
     try:
-        with open(CACHE_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
+        client = retrieval_resources.get_redis_client()
+        keys = list(client.scan_iter(match=f"{ANSWER_CACHE_PREFIX}:*"))
+        if not keys:
+            return {}
+
+        payloads = client.mget(keys)
     except Exception:
         return {}
 
+    cache_data: dict[str, dict[str, Any]] = {}
+    for key, payload in zip(keys, payloads, strict=False):
+        if not payload:
+            continue
+
+        try:
+            entry = json.loads(payload)
+        except Exception:
+            continue
+
+        if not isinstance(entry, dict):
+            continue
+
+        bare_key = str(key).split(f"{ANSWER_CACHE_PREFIX}:", 1)[-1]
+        cache_data[bare_key] = entry
+
+    return cache_data
+
+
+def read_cached_answer(cache_key: str) -> dict | None:
+    try:
+        raw = retrieval_resources.get_redis_client().get(build_answer_cache_key(cache_key))
+    except Exception:
+        return None
+
+    if not raw:
+        return None
+
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return None
+
+    return data if isinstance(data, dict) else None
+
+
+def write_cached_answer(cache_key: str, entry: dict[str, Any]) -> None:
+    if not isinstance(entry, dict):
+        return
+
+    try:
+        retrieval_resources.get_redis_client().setex(
+            build_answer_cache_key(str(cache_key)),
+            ANSWER_CACHE_TTL_SECONDS,
+            json.dumps(entry, ensure_ascii=False),
+        )
+    except Exception:
+        return
+
 
 def save_cache(cache_data: dict) -> None:
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    with open(CACHE_FILE, "w", encoding="utf-8") as f:
-        json.dump(cache_data, f, ensure_ascii=False, indent=2)
+    if not isinstance(cache_data, dict):
+        return
+
+    try:
+        client = retrieval_resources.get_redis_client()
+        existing_keys = list(client.scan_iter(match=f"{ANSWER_CACHE_PREFIX}:*"))
+        provided_keys = {
+            build_answer_cache_key(str(cache_key))
+            for cache_key, entry in cache_data.items()
+            if isinstance(entry, dict)
+        }
+        keys_to_delete = [key for key in existing_keys if key not in provided_keys]
+        if keys_to_delete:
+            client.delete(*keys_to_delete)
+    except Exception:
+        return
+
+    for cache_key, entry in cache_data.items():
+        if isinstance(entry, dict):
+            write_cached_answer(str(cache_key), entry)
 
 
 def get_cache_ttl_for_mode(mode: str) -> int:
@@ -924,29 +1050,11 @@ def get_cache_ttl_for_mode(mode: str) -> int:
 
 
 def cleanup_expired_cache(cache_data: dict) -> dict:
-    cleaned = {}
-
-    for key, entry in cache_data.items():
-        if not isinstance(entry, dict):
-            continue
-
-        mode = str(entry.get("mode", "")).strip().lower()
-        created_at = entry.get("created_at")
-
-        if not isinstance(created_at, (int, float)):
-            continue
-
-        ttl = get_cache_ttl_for_mode(mode)
-        age = time.time() - float(created_at)
-
-        if age <= ttl:
-            cleaned[key] = entry
-
-    return cleaned
+    return cache_data if isinstance(cache_data, dict) else {}
 
 
 def get_valid_cached_entry(cache_data: dict, cache_key: str) -> dict | None:
-    entry = cache_data.get(cache_key)
+    entry = read_cached_answer(cache_key)
 
     if not isinstance(entry, dict):
         return None
@@ -960,10 +1068,9 @@ def get_valid_cached_entry(cache_data: dict, cache_key: str) -> dict | None:
     if mode == "fallback" and llm_api_key_present():
         return None
 
-    ttl = get_cache_ttl_for_mode(mode)
     age = time.time() - float(created_at)
 
-    if age > ttl:
+    if age > ANSWER_CACHE_TTL_SECONDS:
         return None
 
     return entry
@@ -1105,16 +1212,40 @@ def build_fallback_answer(query: str, results_df: pd.DataFrame) -> str:
     return "LLM fallback mode was used.\n\n" + "\n".join(selected) + "\n\n" + format_sources(results_df)
 
 
-def call_llm(query: str, context: str) -> str:
+def call_llm(
+    query: str,
+    context: str,
+    *,
+    run_id: str | None = None,
+    retrieved_documents: list[str] | None = None,
+) -> str:
     if not llm_api_key_present():
         raise ValueError("DEEPSEEK_API_KEY is not set.")
-    return run_chain(query, context)
+    return run_chain(
+        query,
+        context,
+        run_id=run_id,
+        retrieved_documents=retrieved_documents or [],
+    )
 
 
 def post_process_answer(answer: str) -> str:
     text = str(answer or "").strip()
     if not text:
         return ""
+
+    text = re.sub(r"\s*\[Excerpt\s+\d+(?:\s*,\s*Excerpt\s+\d+)*\]", "", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"(?is)^based solely on the provided excerpts[^:\n]*:\s*",
+        "",
+        text,
+    ).strip()
+    text = re.sub(
+        r"(?is)^based solely on the provided excerpts[^.\n]*\.\s*",
+        "",
+        text,
+    ).strip()
+    text = re.sub(r"(?m)^\s*\d+\.\s*", "- ", text)
 
     if "\n" in text or re.search(r"(^|\s)(\d+\.)", text) or re.search(r"(^|\n)\s*[-*]\s+", text):
         cleaned_lines = [
@@ -1142,6 +1273,7 @@ def post_process_answer(answer: str) -> str:
 
 def _build_result(
     query: str,
+    run_id: str | None,
     company_filter: str | None,
     form_filter: str | None,
     mode: str,
@@ -1155,6 +1287,7 @@ def _build_result(
 ) -> dict:
     return {
         "query": query,
+        "run_id": run_id,
         "company_filter": company_filter,
         "form_filter": form_filter,
         "mode": mode,
@@ -1170,6 +1303,7 @@ def _build_result(
 
 class GraphState(TypedDict, total=False):
     query: str
+    run_id: str
     company_filter: str | None
     form_filter: str | None
     event_callback: PipelineEventCallback | None
@@ -1212,6 +1346,7 @@ def records_to_dataframe(records: list[dict[str, Any]] | None) -> pd.DataFrame:
 def node_prepare(state: GraphState) -> GraphState:
     emit_pipeline_event(state, "query_received")
     query = str(state["query"]).strip()
+    run_id = str(state.get("run_id") or "").strip() or uuid4().hex
     company_filter = state.get("company_filter") or infer_company_filter(query)
     form_filter = state.get("form_filter") or infer_form_filter(query)
     query_type = classify_query(query)
@@ -1230,14 +1365,25 @@ def node_prepare(state: GraphState) -> GraphState:
         bm25_k=RETRIEVAL_CANDIDATES,
         top_k=TOP_K,
     )
-    cache_data = cleanup_expired_cache(load_cache())
     cache_key = build_cache_key(query, company_filter, form_filter)
 
     logger.info(f"query_type={query_type}")
     logger.info(f"semantic_scope={semantic_scope}")
+    log_structured(
+        logger,
+        "request_received",
+        run_id=run_id,
+        query=query,
+        company_filter=company_filter,
+        form_filter=form_filter,
+        query_type=query_type,
+        retrieval_backend=retrieval_backend,
+        index_version=index_version,
+    )
 
     return {
         "query": query,
+        "run_id": run_id,
         "company_filter": company_filter,
         "form_filter": form_filter,
         "query_type": query_type,
@@ -1246,7 +1392,6 @@ def node_prepare(state: GraphState) -> GraphState:
         "index_version": index_version,
         "retrieval_cache_key": retrieval_cache_key,
         "retrieval_cache_hit": False,
-        "cache_data": cache_data,
         "cache_key": cache_key,
         "llm_model": LLM_MODEL,
         "cache_hit": False,
@@ -1268,7 +1413,7 @@ def node_cache_lookup(state: GraphState) -> GraphState:
         logger.info("cache_hit=False cache_bypass=filters")
         return {"cached_entry": None}
 
-    cached_entry = get_valid_cached_entry(state["cache_data"], state["cache_key"])
+    cached_entry = get_valid_cached_entry({}, state["cache_key"])
 
     if cached_entry:
         logger.info(f"cache_hit=True cache_mode={cached_entry.get('mode')}")
@@ -1355,6 +1500,19 @@ def node_parallel_retrieve(state: GraphState) -> GraphState:
         cached_retrieval = None if observation_only else read_retrieval_cache(retrieval_cache_key)
         if cached_retrieval and cached_retrieval.get("rows"):
             logger.info("retrieval_cache_hit=True")
+            cached_df = records_to_dataframe(cached_retrieval["rows"])
+            cached_doc_ids, cached_rerank_scores, cached_final_scores = summarize_retrieval_trace(cached_df)
+            log_structured(
+                logger,
+                "retrieval_result",
+                run_id=state.get("run_id"),
+                query=query,
+                top_k=len(cached_df),
+                retrieved_document_ids=cached_doc_ids,
+                rerank_scores=cached_rerank_scores,
+                final_scores=cached_final_scores,
+                cache_hit=True,
+            )
             return {
                 "results_rows": cached_retrieval["rows"],
                 "retrieval_error": None,
@@ -1390,6 +1548,17 @@ def node_parallel_retrieve(state: GraphState) -> GraphState:
         bm25_candidates = prepare_retrieval_source(bm25_df, "bm25")
         merged = merge_retrieval_candidates(vector_candidates, bm25_candidates)
         logger.info(f"parallel_retrieval_rows={len(merged)}")
+        candidate_doc_ids, candidate_rerank_scores, candidate_final_scores = summarize_retrieval_trace(merged)
+        log_structured(
+            logger,
+            "retrieval_candidates",
+            run_id=state.get("run_id"),
+            query=query,
+            top_k=len(merged),
+            retrieved_document_ids=candidate_doc_ids,
+            rerank_scores=candidate_rerank_scores,
+            final_scores=candidate_final_scores,
+        )
 
         start_rerank = time.time()
         emit_pipeline_event(state, "reranking_started")
@@ -1407,6 +1576,19 @@ def node_parallel_retrieve(state: GraphState) -> GraphState:
         rerank_ms = int((time.time() - start_rerank) * 1000)
         logger.info(f"rerank_ms={rerank_ms}")
         logger.info(f"reranked_rows={len(ranked_df)}")
+        ranked_doc_ids, ranked_rerank_scores, ranked_final_scores = summarize_retrieval_trace(ranked_df)
+        log_structured(
+            logger,
+            "rerank_result",
+            run_id=state.get("run_id"),
+            query=query,
+            top_k=len(ranked_df),
+            retrieved_document_ids=ranked_doc_ids,
+            rerank_scores=ranked_rerank_scores,
+            final_scores=ranked_final_scores,
+            latency_ms=rerank_ms,
+            model=RERANKER_MODEL_NAME,
+        )
 
         results_df = finalize_results_df(
             ranked_df,
@@ -1415,6 +1597,18 @@ def node_parallel_retrieve(state: GraphState) -> GraphState:
         )
         retrieval_ms = int((time.time() - start_retrieval) * 1000)
         logger.info(f"retrieval_ms={retrieval_ms}")
+        final_doc_ids, final_rerank_scores, final_final_scores = summarize_retrieval_trace(results_df)
+        log_structured(
+            logger,
+            "retrieval_result",
+            run_id=state.get("run_id"),
+            query=query,
+            top_k=len(results_df),
+            retrieved_document_ids=final_doc_ids,
+            rerank_scores=final_rerank_scores,
+            final_scores=final_final_scores,
+            latency_ms=retrieval_ms,
+        )
 
         results_rows = dataframe_to_records(results_df)
         if observation_only:
@@ -1477,6 +1671,19 @@ def node_retrieve(state: GraphState) -> GraphState:
         rerank_ms = int((time.time() - start_rerank) * 1000)
         logger.info(f"rerank_ms={rerank_ms}")
         logger.info(f"reranked_rows={len(results_df)}")
+        ranked_doc_ids, ranked_rerank_scores, ranked_final_scores = summarize_retrieval_trace(results_df)
+        log_structured(
+            logger,
+            "rerank_result",
+            run_id=state.get("run_id"),
+            query=state.get("query"),
+            top_k=len(results_df),
+            retrieved_document_ids=ranked_doc_ids,
+            rerank_scores=ranked_rerank_scores,
+            final_scores=ranked_final_scores,
+            latency_ms=rerank_ms,
+            model=RERANKER_MODEL_NAME,
+        )
 
         if results_df.empty:
             raise ValueError("No rows returned after rerank.")
@@ -1485,6 +1692,18 @@ def node_retrieve(state: GraphState) -> GraphState:
             results_df,
             company_filter=state.get("company_filter"),
             form_filter=state.get("form_filter"),
+        )
+        final_doc_ids, final_rerank_scores, final_final_scores = summarize_retrieval_trace(results_df)
+        log_structured(
+            logger,
+            "retrieval_result",
+            run_id=state.get("run_id"),
+            query=state.get("query"),
+            top_k=len(results_df),
+            retrieved_document_ids=final_doc_ids,
+            rerank_scores=final_rerank_scores,
+            final_scores=final_final_scores,
+            latency_ms=retrieval_ms,
         )
 
         return {
@@ -1516,6 +1735,17 @@ def node_build_context(state: GraphState) -> GraphState:
     results_df = select_diverse_context_rows(results_df, max_chunks=TOP_K)
     context = build_context(results_df)
     logger.info(f"context_length={len(context)}")
+    context_doc_ids, _, context_final_scores = summarize_retrieval_trace(results_df)
+    log_structured(
+        logger,
+        "context_built",
+        run_id=state.get("run_id"),
+        query=state.get("query"),
+        top_k=len(results_df),
+        retrieved_document_ids=context_doc_ids,
+        final_scores=context_final_scores,
+        context_length=len(context),
+    )
     return {
         "results_rows": dataframe_to_records(results_df),
         "context": context,
@@ -1551,9 +1781,29 @@ def node_llm(state: GraphState) -> GraphState:
         emit_pipeline_event(state, "llm_generation_started")
         logger.info("calling_llm")
         start_llm = time.time()
-        answer = post_process_answer(call_llm(state["query"], state["context"]))
+        retrieved_documents = [
+            build_document_id(row)
+            for row in (state.get("results_rows") or [])[:TOP_K]
+        ]
+        answer = post_process_answer(
+            call_llm(
+                state["query"],
+                state["context"],
+                run_id=state.get("run_id"),
+                retrieved_documents=retrieved_documents,
+            )
+        )
         llm_ms = int((time.time() - start_llm) * 1000)
         logger.info(f"llm_ms={llm_ms}")
+        log_structured(
+            logger,
+            "response_generated",
+            run_id=state.get("run_id"),
+            query=state.get("query"),
+            model=state.get("llm_model", LLM_MODEL),
+            response_length=len(str(answer or "")),
+            latency_ms=llm_ms,
+        )
         emit_pipeline_event(state, "answer_generated")
 
         return {
@@ -1562,7 +1812,18 @@ def node_llm(state: GraphState) -> GraphState:
             "llm_error": None,
         }
     except Exception as exc:
-        logger.info(f"llm_error={exc}")
+        logger.exception(
+            json.dumps(
+                {
+                    "event": "llm_error",
+                    "run_id": state.get("run_id"),
+                    "query": state.get("query"),
+                    "model": state.get("llm_model", LLM_MODEL),
+                    "error": str(exc),
+                },
+                ensure_ascii=False,
+            )
+        )
         results_df = records_to_dataframe(state.get("results_rows"))
         return {
             "answer": build_fallback_answer(state["query"], results_df),
@@ -1608,8 +1869,7 @@ def node_save_cache(state: GraphState) -> GraphState:
         logger.info("cache_save_skipped=True cache_bypass=filters")
         return state
 
-    cache_data = state["cache_data"]
-    cache_data[state["cache_key"]] = {
+    cache_entry = {
         "query": state["query"],
         "company_filter": state.get("company_filter"),
         "form_filter": state.get("form_filter"),
@@ -1621,7 +1881,7 @@ def node_save_cache(state: GraphState) -> GraphState:
         "llm_error": state.get("llm_error"),
         "created_at": time.time(),
     }
-    save_cache(cache_data)
+    write_cached_answer(state["cache_key"], cache_entry)
     increment_cache_stat("answer_cache", "write")
     return state
 
@@ -1701,11 +1961,13 @@ def _answer_single_query(
     form_filter: str | None = None,
     event_callback: PipelineEventCallback | None = None,
     observation_only: bool = False,
+    run_id: str | None = None,
 ) -> dict:
     graph = get_answer_graph()
 
     final_state = graph.invoke({
         "query": query,
+        "run_id": run_id,
         "company_filter": company_filter,
         "form_filter": form_filter,
         "event_callback": event_callback,
@@ -1719,11 +1981,9 @@ def _answer_single_query(
             except Exception as exc:
                 logger.info(f"stream_event_emit_failed={exc}")
 
-    if final_state.get("cache_hit") and not observation_only:
-        save_cache(final_state["cache_data"])
-
     return _build_result(
         query=final_state["query"],
+        run_id=final_state.get("run_id"),
         company_filter=final_state.get("company_filter"),
         form_filter=final_state.get("form_filter"),
         mode=final_state.get("mode", "fallback"),
@@ -1793,6 +2053,7 @@ def combine_multi_company_answers(
 
     aggregated = _build_result(
         query=original_query,
+        run_id=company_results[0].get("run_id") if company_results else None,
         company_filter=None,
         form_filter=form_filter,
         mode=mode,
@@ -1814,6 +2075,7 @@ def answer_query(
     form_filter: str | None = None,
     event_callback: PipelineEventCallback | None = None,
     observation_only: bool = False,
+    run_id: str | None = None,
 ) -> dict:
     effective_form_filter = form_filter or detect_sec_form(query)
 
@@ -1839,6 +2101,7 @@ def answer_query(
                         form_filter=effective_form_filter,
                         event_callback=event_callback,
                         observation_only=observation_only,
+                        run_id=run_id,
                     )
                 )
 
@@ -1854,6 +2117,7 @@ def answer_query(
         form_filter=effective_form_filter,
         event_callback=event_callback,
         observation_only=observation_only,
+        run_id=run_id,
     )
 
 
