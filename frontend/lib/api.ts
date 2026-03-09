@@ -11,7 +11,12 @@ function delay(ms: number) {
   });
 }
 
-export async function askQuestion(payload: AskRequest): Promise<AskResponse> {
+export async function askQuestion(
+  payload: AskRequest,
+  options?: {
+    runId?: string;
+  },
+): Promise<AskResponse> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -20,6 +25,7 @@ export async function askQuestion(payload: AskRequest): Promise<AskResponse> {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(options?.runId ? { "X-Run-ID": options.runId } : {}),
         },
         body: JSON.stringify(payload),
         cache: "no-store",
@@ -34,7 +40,13 @@ export async function askQuestion(payload: AskRequest): Promise<AskResponse> {
         throw new Error(`Backend request failed with status ${response.status}.`);
       }
 
-      return (await response.json()) as AskResponse;
+      const runId = response.headers.get("X-Run-ID");
+      const answer = (await response.json()) as AskResponse;
+
+      return {
+        ...answer,
+        run_id: runId,
+      };
     } catch (error) {
       lastError = error instanceof Error ? error : new Error("Backend request failed.");
       if (attempt === 0) {

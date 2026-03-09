@@ -104,6 +104,17 @@ export function AnswerResult({
           <div className="rounded-[26px] border border-slate-200 bg-white px-5 py-5">
             <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-slate-500">Answer</p>
             <div className="mt-3">{renderAnswerBlocks(answer.answer)}</div>
+            <div className="mt-4 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+              <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-slate-500">LLM Run Info</p>
+              <p className="mt-2 break-all">
+                <span className="font-medium text-slate-700">run_id:</span>{" "}
+                {answer.run_id ?? "n/a"}
+              </p>
+              <p className="mt-1">
+                <span className="font-medium text-slate-700">source:</span>{" "}
+                {answer.cache_hit ? "cache" : "pipeline"}
+              </p>
+            </div>
           </div>
 
           <div className="rounded-[26px] border border-slate-200 bg-white px-5 py-5">

@@ -29,6 +29,7 @@ export interface AskResponse {
   mode: string;
   sources: string;
   cache_hit: boolean;
+  run_id?: string | null;
 }
 
 export interface CacheClearResponse {
