@@ -40,7 +40,7 @@ export async function askQuestion(
         throw new Error(`Backend request failed with status ${response.status}.`);
       }
 
-      const runId = response.headers.get("X-Run-ID");
+      const runId = response.headers.get("X-Run-ID") || options?.runId || null;
       const answer = (await response.json()) as AskResponse;
 
       return {
