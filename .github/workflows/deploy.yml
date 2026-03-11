@@ -149,7 +149,7 @@ jobs:
           OLD_FRONTEND_IMAGE_ID="$(get_service_image_id rag-frontend)"
 
           docker compose "${COMPOSE_ENV_ARGS[@]}" down --remove-orphans
-          docker compose "${COMPOSE_ENV_ARGS[@]}" build rag-api rag-frontend
+          DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 docker compose "${COMPOSE_ENV_ARGS[@]}" build rag-api rag-frontend
           docker compose "${COMPOSE_ENV_ARGS[@]}" up -d redis qdrant
           docker compose "${COMPOSE_ENV_ARGS[@]}" run --rm --no-deps rag-api python app/scripts/bootstrap_qdrant.py
           docker compose "${COMPOSE_ENV_ARGS[@]}" up -d rag-api rag-frontend

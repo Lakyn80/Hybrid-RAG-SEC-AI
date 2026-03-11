@@ -11,3 +11,6 @@ frontend/
 
 *.pyc
 *.pyo
+*.pid
+*.sock
+*.ctl
