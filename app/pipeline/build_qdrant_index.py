@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from qdrant_client.http import models
+from qdrant_client.http.exceptions import ResponseHandlingException
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 if BASE_DIR not in sys.path:
@@ -24,6 +25,8 @@ BATCH_SIZE = max(1, int(os.getenv("QDRANT_EMBED_BATCH_SIZE") or "16"))
 MODEL_NAME = resources.DEFAULT_EMBEDDING_MODEL
 HNSW_M = 16
 HNSW_EF_CONSTRUCT = 200
+UPSERT_RETRIES = max(1, int(os.getenv("QDRANT_UPSERT_RETRIES") or "3"))
+UPSERT_RETRY_DELAY_SECONDS = max(1.0, float(os.getenv("QDRANT_UPSERT_RETRY_DELAY") or "5"))
 
 
 def compute_index_version(input_file: str, row_count: int, model_name: str) -> str:
@@ -126,6 +129,7 @@ def build_qdrant_index() -> int:
     print(f"COLLECTION_ALIAS: {alias_name}")
     print(f"ROWS FOR EMBEDDING: {len(df)}")
     print(f"EMBED_BATCH_SIZE: {BATCH_SIZE}")
+    print(f"UPSERT_RETRIES: {UPSERT_RETRIES}")
 
     metadata_df = df[
         [
@@ -206,11 +210,21 @@ def build_qdrant_index() -> int:
                 )
             )
 
-        client.upsert(
-            collection_name=collection_name,
-            points=points,
-            wait=True,
-        )
+        for attempt in range(1, UPSERT_RETRIES + 1):
+            try:
+                client.upsert(
+                    collection_name=collection_name,
+                    points=points,
+                    wait=True,
+                )
+                break
+            except ResponseHandlingException as exc:
+                if attempt >= UPSERT_RETRIES:
+                    raise
+                print(
+                    f"UPSERT RETRY {attempt}/{UPSERT_RETRIES} for rows {start}-{end - 1}: {exc}"
+                )
+                time.sleep(UPSERT_RETRY_DELAY_SECONDS)
         print(f"UPSERTED BATCH {batch_number}: rows {start}-{end - 1}")
 
     os.makedirs(os.path.dirname(METADATA_FILE), exist_ok=True)

@@ -11,6 +11,7 @@ from app.retrieval.metadata_utils import normalize_metadata_value
 DEFAULT_QDRANT_URL = "http://localhost:6333"
 DEFAULT_COLLECTION_ALIAS = "sec_filings_chunks_current"
 DEFAULT_HNSW_EF = 128
+DEFAULT_QDRANT_TIMEOUT = 120.0
 
 _qdrant_client: QdrantClient | None = None
 
@@ -35,6 +36,16 @@ def get_collection_alias() -> str:
     return DEFAULT_COLLECTION_ALIAS
 
 
+def get_qdrant_timeout() -> float:
+    raw_timeout = str(os.getenv("QDRANT_TIMEOUT") or "").strip()
+    if raw_timeout:
+        try:
+            return max(1.0, float(raw_timeout))
+        except ValueError:
+            pass
+    return DEFAULT_QDRANT_TIMEOUT
+
+
 def get_runtime_collection_name() -> str:
     manifest = resources.load_runtime_manifest()
     collection_name = str(manifest.get("collection_name") or "").strip()
@@ -49,7 +60,7 @@ def get_qdrant_client() -> QdrantClient:
     if _qdrant_client is None:
         _qdrant_client = QdrantClient(
             url=get_qdrant_url(),
-            timeout=5.0,
+            timeout=get_qdrant_timeout(),
         )
 
     return _qdrant_client
