@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python-ai-base:1
 
 WORKDIR /app
 
