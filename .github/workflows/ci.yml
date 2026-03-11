@@ -96,5 +96,13 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
           df -h
 
-      - name: Build Docker images
-        run: docker compose build rag-api rag-frontend
+      - name: Build frontend Docker image
+        run: docker compose build rag-frontend
+
+      - name: Build API Docker image when shared base exists
+        run: |
+          if docker image inspect python-ai-base:1 >/dev/null 2>&1; then
+            docker compose build rag-api
+          else
+            echo "Skipping rag-api Docker build: python-ai-base:1 is only available on the deployment server."
+          fi
