@@ -36,7 +36,9 @@ services:
       -k uvicorn.workers.UvicornWorker
       -w 2
       -t 300
-      -b 0.0.0.0:8021"
+      -b 0.0.0.0:8021
+      --access-logfile -
+      --access-logformat '%(h)s %(l)s %(u)s %(t)s \"%(r)s\" %(s)s %(b)s \"%(f)s\" \"%(a)s\"'"
 
   rag-frontend:
     build:
