@@ -114,14 +114,44 @@ jobs:
             exit 1
           fi
 
+          get_service_image_id() {
+            local service="$1"
+            local container_id
+
+            container_id=$(docker compose "${COMPOSE_ENV_ARGS[@]}" ps -q "$service" 2>/dev/null || true)
+            if [ -n "$container_id" ]; then
+              docker inspect -f '{{.Image}}' "$container_id" 2>/dev/null || true
+            fi
+          }
+
+          remove_old_image_if_unused() {
+            local image_id="$1"
+
+            if [ -z "$image_id" ]; then
+              return 0
+            fi
+
+            if docker ps -aq --filter "ancestor=$image_id" | grep -q .; then
+              echo "Keeping image $image_id because it is still referenced by a container."
+              return 0
+            fi
+
+            docker image rm -f "$image_id" || true
+          }
+
           echo "Deploying with FRONTEND_PORT=$FRONTEND_PORT"
           if ! docker image inspect python-ai-base:1 >/dev/null 2>&1; then
             echo "Missing required local base image: python-ai-base:1" >&2
             exit 1
           fi
 
-          docker compose "${COMPOSE_ENV_ARGS[@]}" down
+          OLD_API_IMAGE_ID="$(get_service_image_id rag-api)"
+          OLD_FRONTEND_IMAGE_ID="$(get_service_image_id rag-frontend)"
+
+          docker compose "${COMPOSE_ENV_ARGS[@]}" down --remove-orphans
           docker compose "${COMPOSE_ENV_ARGS[@]}" build rag-api rag-frontend
           docker compose "${COMPOSE_ENV_ARGS[@]}" up -d
           docker compose "${COMPOSE_ENV_ARGS[@]}" exec -T rag-api python app/scripts/bootstrap_qdrant.py
+          remove_old_image_if_unused "$OLD_API_IMAGE_ID"
+          remove_old_image_if_unused "$OLD_FRONTEND_IMAGE_ID"
           EOF
