@@ -1,13 +1,4 @@
---extra-index-url https://download.pytorch.org/whl/cpu
-
-fastapi
-uvicorn
-gunicorn
-
-sentence-transformers
-torch
 faiss-cpu
-numpy
 pandas
 pyarrow
 
