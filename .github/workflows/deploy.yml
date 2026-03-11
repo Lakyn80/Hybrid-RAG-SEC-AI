@@ -150,8 +150,9 @@ jobs:
 
           docker compose "${COMPOSE_ENV_ARGS[@]}" down --remove-orphans
           docker compose "${COMPOSE_ENV_ARGS[@]}" build rag-api rag-frontend
-          docker compose "${COMPOSE_ENV_ARGS[@]}" up -d
-          docker compose "${COMPOSE_ENV_ARGS[@]}" exec -T rag-api python app/scripts/bootstrap_qdrant.py
+          docker compose "${COMPOSE_ENV_ARGS[@]}" up -d redis qdrant
+          docker compose "${COMPOSE_ENV_ARGS[@]}" run --rm --no-deps rag-api python app/scripts/bootstrap_qdrant.py
+          docker compose "${COMPOSE_ENV_ARGS[@]}" up -d rag-api rag-frontend
           remove_old_image_if_unused "$OLD_API_IMAGE_ID"
           remove_old_image_if_unused "$OLD_FRONTEND_IMAGE_ID"
           EOF

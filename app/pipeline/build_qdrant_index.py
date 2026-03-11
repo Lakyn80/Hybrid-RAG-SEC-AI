@@ -20,7 +20,7 @@ INPUT_FILE = os.path.join(BASE_DIR, "data", "clean", "filings_chunks.parquet")
 METADATA_FILE = resources.METADATA_FILE
 RUNTIME_MANIFEST_FILE = resources.RUNTIME_MANIFEST_FILE
 
-BATCH_SIZE = 128
+BATCH_SIZE = max(1, int(os.getenv("QDRANT_EMBED_BATCH_SIZE") or "16"))
 MODEL_NAME = resources.DEFAULT_EMBEDDING_MODEL
 HNSW_M = 16
 HNSW_EF_CONSTRUCT = 200
@@ -125,47 +125,7 @@ def build_qdrant_index() -> int:
     print(f"COLLECTION_NAME: {collection_name}")
     print(f"COLLECTION_ALIAS: {alias_name}")
     print(f"ROWS FOR EMBEDDING: {len(df)}")
-
-    model = resources.get_embedding_model(MODEL_NAME)
-    embeddings = model.encode(
-        df["chunk_text"].tolist(),
-        batch_size=BATCH_SIZE,
-        show_progress_bar=True,
-        convert_to_numpy=True,
-        normalize_embeddings=True,
-    )
-    embeddings = np.asarray(embeddings, dtype="float32")
-
-    client = get_qdrant_client()
-    vector_size = int(embeddings.shape[1])
-
-    if client.collection_exists(collection_name):
-        client.delete_collection(collection_name)
-
-    client.create_collection(
-        collection_name=collection_name,
-        vectors_config=models.VectorParams(
-            size=vector_size,
-            distance=models.Distance.COSINE,
-        ),
-        hnsw_config=models.HnswConfigDiff(
-            m=HNSW_M,
-            ef_construct=HNSW_EF_CONSTRUCT,
-        ),
-    )
-
-    client.create_payload_index(
-        collection_name=collection_name,
-        field_name="company_norm",
-        field_schema=models.PayloadSchemaType.KEYWORD,
-        wait=True,
-    )
-    client.create_payload_index(
-        collection_name=collection_name,
-        field_name="form_norm",
-        field_schema=models.PayloadSchemaType.KEYWORD,
-        wait=True,
-    )
+    print(f"EMBED_BATCH_SIZE: {BATCH_SIZE}")
 
     metadata_df = df[
         [
@@ -187,10 +147,52 @@ def build_qdrant_index() -> int:
     ].copy()
     metadata_df.insert(0, "vector_id", range(len(metadata_df)))
 
-    for start in range(0, len(metadata_df), BATCH_SIZE):
+    model = resources.get_embedding_model(MODEL_NAME)
+
+    client = get_qdrant_client()
+    if client.collection_exists(collection_name):
+        client.delete_collection(collection_name)
+    collection_created = False
+
+    for batch_number, start in enumerate(range(0, len(metadata_df), BATCH_SIZE), start=1):
         end = min(start + BATCH_SIZE, len(metadata_df))
         batch_rows = metadata_df.iloc[start:end]
-        batch_vectors = embeddings[start:end]
+        batch_vectors = model.encode(
+            batch_rows["chunk_text"].tolist(),
+            batch_size=BATCH_SIZE,
+            show_progress_bar=False,
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+        )
+        batch_vectors = np.asarray(batch_vectors, dtype="float32")
+
+        if not collection_created:
+            vector_size = int(batch_vectors.shape[1])
+            client.create_collection(
+                collection_name=collection_name,
+                vectors_config=models.VectorParams(
+                    size=vector_size,
+                    distance=models.Distance.COSINE,
+                ),
+                hnsw_config=models.HnswConfigDiff(
+                    m=HNSW_M,
+                    ef_construct=HNSW_EF_CONSTRUCT,
+                ),
+            )
+
+            client.create_payload_index(
+                collection_name=collection_name,
+                field_name="company_norm",
+                field_schema=models.PayloadSchemaType.KEYWORD,
+                wait=True,
+            )
+            client.create_payload_index(
+                collection_name=collection_name,
+                field_name="form_norm",
+                field_schema=models.PayloadSchemaType.KEYWORD,
+                wait=True,
+            )
+            collection_created = True
 
         points = []
         for row, vector in zip(batch_rows.to_dict(orient="records"), batch_vectors, strict=True):
@@ -209,6 +211,7 @@ def build_qdrant_index() -> int:
             points=points,
             wait=True,
         )
+        print(f"UPSERTED BATCH {batch_number}: rows {start}-{end - 1}")
 
     os.makedirs(os.path.dirname(METADATA_FILE), exist_ok=True)
     metadata_df.to_parquet(METADATA_FILE, index=False)

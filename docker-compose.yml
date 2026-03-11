@@ -31,14 +31,13 @@ services:
       QDRANT_COLLECTION_ALIAS: sec_filings_chunks_current
     restart: unless-stopped
     command: >
-      sh -c "python app/scripts/bootstrap_qdrant.py &&
       gunicorn app.main:app
       -k uvicorn.workers.UvicornWorker
-      -w 2
+      -w ${API_WORKERS:-1}
       -t 300
       -b 0.0.0.0:8021
       --access-logfile -
-      --access-logformat '%(h)s %(l)s %(u)s %(t)s \"%(r)s\" %(s)s %(b)s \"%(f)s\" \"%(a)s\"'"
+      --access-logformat '%(h)s %(l)s %(u)s %(t)s \"%(r)s\" %(s)s %(b)s \"%(f)s\" \"%(a)s\"'
 
   rag-frontend:
     build:
