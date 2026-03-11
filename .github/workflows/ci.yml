@@ -89,5 +89,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Free disk space before Docker build
+        run: |
+          docker system prune -af || true
+          docker builder prune -af || true
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
+          df -h
+
       - name: Build Docker images
         run: docker compose build rag-api rag-frontend
