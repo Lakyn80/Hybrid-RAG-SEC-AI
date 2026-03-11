@@ -1,6 +1,6 @@
-faiss-cpu
-pandas
-pyarrow
+fastapi
+uvicorn
+gunicorn
 
 requests
 python-dotenv
