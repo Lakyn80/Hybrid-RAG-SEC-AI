@@ -78,31 +78,3 @@ jobs:
         run: npm run build
         env:
           NEXT_PUBLIC_BACKEND_URL: http://localhost:8021
-
-  docker-build:
-    runs-on: ubuntu-latest
-    needs:
-      - backend-checks
-      - frontend-build
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Free disk space before Docker build
-        run: |
-          docker system prune -af || true
-          docker builder prune -af || true
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
-          df -h
-
-      - name: Build frontend Docker image
-        run: docker compose build rag-frontend
-
-      - name: Build API Docker image when shared base exists
-        run: |
-          if docker image inspect python-ai-base:1 >/dev/null 2>&1; then
-            docker compose build rag-api
-          else
-            echo "Skipping rag-api Docker build: python-ai-base:1 is only available on the deployment server."
-          fi

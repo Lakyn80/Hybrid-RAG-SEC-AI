@@ -1,16 +1,25 @@
 name: Deploy
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: true
 
     steps:
       - name: Configure SSH
@@ -106,7 +115,13 @@ jobs:
           fi
 
           echo "Deploying with FRONTEND_PORT=$FRONTEND_PORT"
+          if ! docker image inspect python-ai-base:1 >/dev/null 2>&1; then
+            echo "Missing required local base image: python-ai-base:1" >&2
+            exit 1
+          fi
+
           docker compose "${COMPOSE_ENV_ARGS[@]}" down
-          docker compose "${COMPOSE_ENV_ARGS[@]}" up -d --build
+          docker compose "${COMPOSE_ENV_ARGS[@]}" build rag-api rag-frontend
+          docker compose "${COMPOSE_ENV_ARGS[@]}" up -d
           docker compose "${COMPOSE_ENV_ARGS[@]}" exec -T rag-api python app/scripts/bootstrap_qdrant.py
           EOF
