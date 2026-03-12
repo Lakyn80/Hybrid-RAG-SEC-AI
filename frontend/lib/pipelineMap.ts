@@ -37,7 +37,7 @@ const PIPELINE_STEP_DEFINITIONS: Array<{
   {
     id: "llm",
     label: "LLM",
-    description: "DeepSeek generates the final grounded response.",
+    description: "LLM generates the final grounded response.",
   },
   {
     id: "answer",
