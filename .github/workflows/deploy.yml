@@ -1,6 +1,9 @@
 name: Deploy
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -12,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-production
-      cancel-in-progress: true
+      cancel-in-progress: false
 
     steps:
       - name: Checkout repository
@@ -203,7 +206,6 @@ jobs:
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 
           docker compose pull rag-api rag-frontend
-          docker compose down --remove-orphans
           docker compose up -d redis qdrant
           docker compose run --rm --no-deps rag-api python app/scripts/bootstrap_qdrant.py
           docker compose up -d rag-api rag-frontend
