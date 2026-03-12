@@ -643,70 +643,107 @@ function normalizeLocale(value: string | undefined): UiLocale {
   return "en";
 }
 
+export const LOCALE_STORAGE_KEY = "hybrid-rag-sec-ai-ui-locale";
 export const uiLocale = normalizeLocale(process.env.NEXT_PUBLIC_UI_LOCALE);
 export const copy = LOCALES[uiLocale];
 
-export function translateStreamStatus(status: StreamConnectionStatus) {
-  return copy.common.streamStatuses[status] ?? status;
+export function getCopyForLocale(locale: UiLocale) {
+  return LOCALES[locale];
 }
 
-export function translateHistoryStatus(status: HistoryEntry["status"]) {
-  return copy.common.historyStatuses[status] ?? status;
+export function getRuntimeLocale(): UiLocale {
+  if (typeof window === "undefined") {
+    return uiLocale;
+  }
+
+  return normalizeLocale(window.localStorage.getItem(LOCALE_STORAGE_KEY) ?? undefined);
 }
 
-export function translateAnswerMode(mode: string | null | undefined) {
+export function getRuntimeCopy() {
+  return getCopyForLocale(getRuntimeLocale());
+}
+
+export function translateStreamStatus(
+  status: StreamConnectionStatus,
+  locale: UiLocale = getRuntimeLocale(),
+) {
+  return getCopyForLocale(locale).common.streamStatuses[status] ?? status;
+}
+
+export function translateHistoryStatus(
+  status: HistoryEntry["status"],
+  locale: UiLocale = getRuntimeLocale(),
+) {
+  return getCopyForLocale(locale).common.historyStatuses[status] ?? status;
+}
+
+export function translateAnswerMode(
+  mode: string | null | undefined,
+  locale: UiLocale = getRuntimeLocale(),
+) {
   if (!mode) {
     return mode;
   }
 
-  return copy.common.answerModes[mode] ?? mode;
+  return getCopyForLocale(locale).common.answerModes[mode] ?? mode;
 }
 
-export function translateCacheState(hit: boolean) {
-  return hit ? copy.common.cacheHit : copy.common.cacheMiss;
+export function translateCacheState(
+  hit: boolean,
+  locale: UiLocale = getRuntimeLocale(),
+) {
+  const activeCopy = getCopyForLocale(locale);
+  return hit ? activeCopy.common.cacheHit : activeCopy.common.cacheMiss;
 }
 
-export function translatePipelineStep(stepId: PipelineStepId) {
-  return copy.pipeline.steps[stepId]?.label ?? stepId;
+export function translatePipelineStep(
+  stepId: PipelineStepId,
+  locale: UiLocale = getRuntimeLocale(),
+) {
+  return getCopyForLocale(locale).pipeline.steps[stepId]?.label ?? stepId;
 }
 
-export function translateBackendEvent(message: string) {
+export function translateBackendEvent(
+  message: string,
+  locale: UiLocale = getRuntimeLocale(),
+) {
+  const activeCopy = getCopyForLocale(locale);
   const normalized = message.trim().toLowerCase();
 
   if (!normalized) {
-    return copy.pipeline.events.empty;
+    return activeCopy.pipeline.events.empty;
   }
 
   if (/\bquery_received\b|\bquery_started\b|\bquery_submitted\b/.test(normalized)) {
-    return copy.pipeline.events.query;
+    return activeCopy.pipeline.events.query;
   }
 
   if (/\bembedding_created\b|\bembedding_started\b|\bembedding_generated\b/.test(normalized)) {
-    return copy.pipeline.events.embedding;
+    return activeCopy.pipeline.events.embedding;
   }
 
   if (/\bparallel_retrieval_rows\b|\bretrieved_rows\b|\bretrieval_result\b|\bhybrid_retrieval\b|\bvector_search\b|\bbm25\b|\bretrieval_started\b/.test(normalized)) {
-    return copy.pipeline.events.retrieval;
+    return activeCopy.pipeline.events.retrieval;
   }
 
   if (/\breranked_top_k\b|\breranking\b|\brerank_score\b|\brerank_result\b/.test(normalized)) {
-    return copy.pipeline.events.rerank;
+    return activeCopy.pipeline.events.rerank;
   }
 
   if (/\bcontext_length\b|\bcontext_built\b|\bcontext_build\b/.test(normalized)) {
-    return copy.pipeline.events.context;
+    return activeCopy.pipeline.events.context;
   }
 
   if (/\bcalling_llm\b|\bllm_generation_started\b|\bllm_ms\b|\bllm_generation\b|\bllm_error\b/.test(normalized)) {
-    return copy.pipeline.events.llm;
+    return activeCopy.pipeline.events.llm;
   }
 
   if (/\banswer_generated\b|\banswer_ready\b|\bcompleted\b|\bdone\b/.test(normalized)) {
-    return copy.pipeline.events.answer;
+    return activeCopy.pipeline.events.answer;
   }
 
   if (normalized === "empty_event") {
-    return copy.pipeline.events.empty;
+    return activeCopy.pipeline.events.empty;
   }
 
   return null;

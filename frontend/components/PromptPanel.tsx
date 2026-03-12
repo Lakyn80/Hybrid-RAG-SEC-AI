@@ -1,7 +1,7 @@
 "use client";
 
+import { useUiLocale } from "@/components/UiLocaleProvider";
 import { getPromptGuardState } from "@/lib/promptGuard";
-import { copy } from "@/lib/i18n";
 
 interface PromptPanelProps {
   query: string;
@@ -16,6 +16,7 @@ export function PromptPanel({
   onQueryChange,
   onSubmit,
 }: PromptPanelProps) {
+  const { copy } = useUiLocale();
   const promptGuard = getPromptGuardState(query);
 
   return (

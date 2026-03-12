@@ -1,7 +1,8 @@
 "use client";
 
 import { StatusPill } from "@/components/StatusPill";
-import { copy, translateStreamStatus } from "@/lib/i18n";
+import { useUiLocale } from "@/components/UiLocaleProvider";
+import { translateStreamStatus } from "@/lib/i18n";
 import { PipelineStepState, StreamConnectionStatus } from "@/lib/types";
 
 interface PipelineVisualizerProps {
@@ -40,6 +41,7 @@ export function PipelineVisualizer({
   status,
   isLoading,
 }: PipelineVisualizerProps) {
+  const { copy, locale } = useUiLocale();
   return (
     <section className="panel rounded-[32px] p-5 sm:p-6">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
@@ -48,7 +50,7 @@ export function PipelineVisualizer({
           <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{copy.pipeline.title}</h2>
         </div>
         <div className="flex flex-wrap gap-2">
-          <StatusPill label={`${copy.common.streamLabel} ${translateStreamStatus(status)}`} variant={status === "open" ? "success" : status === "fallback" ? "warning" : "neutral"} />
+          <StatusPill label={`${copy.common.streamLabel} ${translateStreamStatus(status, locale)}`} variant={status === "open" ? "success" : status === "fallback" ? "warning" : "neutral"} />
           <StatusPill label={isLoading ? copy.common.activeRun : copy.common.ready} variant={isLoading ? "info" : "neutral"} />
         </div>
       </div>

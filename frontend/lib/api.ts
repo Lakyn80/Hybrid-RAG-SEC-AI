@@ -4,7 +4,7 @@ import {
   CacheClearResponse,
   QuestionBankResponse,
 } from "@/lib/types";
-import { copy } from "@/lib/i18n";
+import { getRuntimeCopy } from "@/lib/i18n";
 
 function delay(ms: number) {
   return new Promise((resolve) => {
@@ -18,6 +18,7 @@ export async function askQuestion(
     runId?: string;
   },
 ): Promise<AskResponse> {
+  const copy = getRuntimeCopy();
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -62,6 +63,7 @@ export async function askQuestion(
 }
 
 export async function clearSystemCache(): Promise<CacheClearResponse> {
+  const copy = getRuntimeCopy();
   const response = await fetch("/api/cache/clear", {
     method: "POST",
     cache: "no-store",
@@ -75,6 +77,7 @@ export async function clearSystemCache(): Promise<CacheClearResponse> {
 }
 
 export async function getQuestionBank(): Promise<QuestionBankResponse> {
+  const copy = getRuntimeCopy();
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => {
     controller.abort();

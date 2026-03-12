@@ -3,49 +3,7 @@ import {
   PipelineStepId,
   PipelineStepState,
 } from "@/lib/types";
-import { copy, translateBackendEvent } from "@/lib/i18n";
-
-const PIPELINE_STEP_DEFINITIONS: Array<{
-  id: PipelineStepId;
-  label: string;
-  description: string;
-}> = [
-  {
-    id: "prompt",
-    label: copy.pipeline.steps.prompt.label,
-    description: copy.pipeline.steps.prompt.description,
-  },
-  {
-    id: "embedding",
-    label: copy.pipeline.steps.embedding.label,
-    description: copy.pipeline.steps.embedding.description,
-  },
-  {
-    id: "retrieval",
-    label: copy.pipeline.steps.retrieval.label,
-    description: copy.pipeline.steps.retrieval.description,
-  },
-  {
-    id: "rerank",
-    label: copy.pipeline.steps.rerank.label,
-    description: copy.pipeline.steps.rerank.description,
-  },
-  {
-    id: "context",
-    label: copy.pipeline.steps.context.label,
-    description: copy.pipeline.steps.context.description,
-  },
-  {
-    id: "llm",
-    label: copy.pipeline.steps.llm.label,
-    description: copy.pipeline.steps.llm.description,
-  },
-  {
-    id: "answer",
-    label: copy.pipeline.steps.answer.label,
-    description: copy.pipeline.steps.answer.description,
-  },
-];
+import { getRuntimeCopy, translateBackendEvent } from "@/lib/i18n";
 
 const EVENT_PATTERNS: Array<{
   pattern: RegExp;
@@ -103,7 +61,51 @@ function humanizeMessage(message: string): string {
 }
 
 export function createInitialSteps(): PipelineStepState[] {
-  return PIPELINE_STEP_DEFINITIONS.map((step) => ({
+  const activeCopy = getRuntimeCopy();
+
+  const stepDefinitions: Array<{
+    id: PipelineStepId;
+    label: string;
+    description: string;
+  }> = [
+    {
+      id: "prompt",
+      label: activeCopy.pipeline.steps.prompt.label,
+      description: activeCopy.pipeline.steps.prompt.description,
+    },
+    {
+      id: "embedding",
+      label: activeCopy.pipeline.steps.embedding.label,
+      description: activeCopy.pipeline.steps.embedding.description,
+    },
+    {
+      id: "retrieval",
+      label: activeCopy.pipeline.steps.retrieval.label,
+      description: activeCopy.pipeline.steps.retrieval.description,
+    },
+    {
+      id: "rerank",
+      label: activeCopy.pipeline.steps.rerank.label,
+      description: activeCopy.pipeline.steps.rerank.description,
+    },
+    {
+      id: "context",
+      label: activeCopy.pipeline.steps.context.label,
+      description: activeCopy.pipeline.steps.context.description,
+    },
+    {
+      id: "llm",
+      label: activeCopy.pipeline.steps.llm.label,
+      description: activeCopy.pipeline.steps.llm.description,
+    },
+    {
+      id: "answer",
+      label: activeCopy.pipeline.steps.answer.label,
+      description: activeCopy.pipeline.steps.answer.description,
+    },
+  ];
+
+  return stepDefinitions.map((step) => ({
     ...step,
     status: "idle",
   }));

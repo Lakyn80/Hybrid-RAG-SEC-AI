@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useUiLocale } from "@/components/UiLocaleProvider";
 import { useEventStream } from "@/hooks/useEventStream";
 import { askQuestion } from "@/lib/api";
-import { copy } from "@/lib/i18n";
+import { getRuntimeCopy } from "@/lib/i18n";
 import { createInitialSteps } from "@/lib/pipelineMap";
 import {
   AskResponse,
@@ -151,6 +152,7 @@ function upsertHistoryEntry(history: HistoryEntry[], entry: HistoryEntry) {
 }
 
 function createLegacySnapshot(rawEntry: Record<string, unknown>): RunState {
+  const copy = getRuntimeCopy();
   const query = typeof rawEntry.query === "string" ? rawEntry.query : "";
   const createdAt =
     typeof rawEntry.createdAt === "string" ? rawEntry.createdAt : new Date().toISOString();
@@ -307,6 +309,7 @@ function buildHistoryEntry(
 }
 
 export function useAskPipeline() {
+  const { copy } = useUiLocale();
   const [run, setRun] = useState<RunState>(createEmptyRun);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);

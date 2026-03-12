@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Space_Grotesk } from "next/font/google";
 
+import { UiLocaleProvider } from "@/components/UiLocaleProvider";
 import { copy } from "@/lib/i18n";
 import "./globals.css";
 
@@ -33,7 +34,7 @@ export default function RootLayout({
   return (
     <html lang={copy.metadata.lang}>
       <body className={`${spaceGrotesk.variable} ${ibmPlexMono.variable}`}>
-        {children}
+        <UiLocaleProvider>{children}</UiLocaleProvider>
       </body>
     </html>
   );

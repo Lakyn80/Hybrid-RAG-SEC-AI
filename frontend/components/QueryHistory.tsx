@@ -1,6 +1,7 @@
 "use client";
 
-import { copy, translateHistoryStatus } from "@/lib/i18n";
+import { useUiLocale } from "@/components/UiLocaleProvider";
+import { translateAnswerMode, translateHistoryStatus } from "@/lib/i18n";
 import { HistoryEntry } from "@/lib/types";
 
 interface QueryHistoryProps {
@@ -15,8 +16,8 @@ interface QueryHistoryProps {
   onRunAgain: (entryId: string) => void;
 }
 
-function formatTime(timestamp: string) {
-  return new Date(timestamp).toLocaleTimeString(copy.metadata.lang, {
+function formatTime(timestamp: string, locale: string) {
+  return new Date(timestamp).toLocaleTimeString(locale, {
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -33,6 +34,7 @@ export function QueryHistory({
   onRestore,
   onRunAgain,
 }: QueryHistoryProps) {
+  const { copy, locale } = useUiLocale();
   return (
     <section className="panel rounded-[32px] p-5 sm:p-6">
       <div className="mb-5 flex items-end justify-between gap-4">
@@ -103,17 +105,17 @@ export function QueryHistory({
                       {entry.query}
                     </p>
                     <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-slate-500">
-                      {formatTime(entry.createdAt)}
+                      {formatTime(entry.createdAt, locale)}
                     </span>
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
                     <span className="rounded-full bg-slate-100 px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.16em] text-slate-600">
-                      {translateHistoryStatus(entry.status)}
+                      {translateHistoryStatus(entry.status, locale)}
                     </span>
                     {entry.mode ? (
                       <span className="rounded-full bg-brand-soft px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.16em] text-brand">
-                        {entry.mode}
+                        {translateAnswerMode(entry.mode, locale)}
                       </span>
                     ) : null}
                     {typeof entry.cacheHit === "boolean" ? (

@@ -2,8 +2,9 @@
 
 import { useEffect, useRef } from "react";
 
-import { copy, translatePipelineStep, translateStreamStatus } from "@/lib/i18n";
 import { StatusPill } from "@/components/StatusPill";
+import { useUiLocale } from "@/components/UiLocaleProvider";
+import { translatePipelineStep, translateStreamStatus, type UiLocale } from "@/lib/i18n";
 import { ExecutionLogEntry, StreamConnectionStatus } from "@/lib/types";
 
 interface ExecutionLogProps {
@@ -12,25 +13,25 @@ interface ExecutionLogProps {
   isLoading: boolean;
 }
 
-function statusLabel(status: StreamConnectionStatus) {
+function statusLabel(status: StreamConnectionStatus, locale: UiLocale) {
   switch (status) {
     case "connecting":
-      return { label: translateStreamStatus(status), variant: "info" as const };
+      return { label: translateStreamStatus(status, locale), variant: "info" as const };
     case "open":
-      return { label: translateStreamStatus(status), variant: "success" as const };
+      return { label: translateStreamStatus(status, locale), variant: "success" as const };
     case "fallback":
-      return { label: translateStreamStatus(status), variant: "warning" as const };
+      return { label: translateStreamStatus(status, locale), variant: "warning" as const };
     case "error":
-      return { label: translateStreamStatus(status), variant: "danger" as const };
+      return { label: translateStreamStatus(status, locale), variant: "danger" as const };
     case "closed":
-      return { label: translateStreamStatus(status), variant: "neutral" as const };
+      return { label: translateStreamStatus(status, locale), variant: "neutral" as const };
     default:
-      return { label: translateStreamStatus(status), variant: "neutral" as const };
+      return { label: translateStreamStatus(status, locale), variant: "neutral" as const };
   }
 }
 
-function formatTimestamp(timestamp: string) {
-  return new Date(timestamp).toLocaleTimeString(copy.metadata.lang, {
+function formatTimestamp(timestamp: string, locale: UiLocale) {
+  return new Date(timestamp).toLocaleTimeString(locale, {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -38,6 +39,7 @@ function formatTimestamp(timestamp: string) {
 }
 
 export function ExecutionLog({ logs, status, isLoading }: ExecutionLogProps) {
+  const { copy, locale } = useUiLocale();
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -49,7 +51,7 @@ export function ExecutionLog({ logs, status, isLoading }: ExecutionLogProps) {
     element.scrollTop = element.scrollHeight;
   }, [logs]);
 
-  const pill = statusLabel(status);
+  const pill = statusLabel(status, locale);
 
   return (
     <section className="panel rounded-[32px] p-5 sm:p-6">
@@ -94,10 +96,10 @@ export function ExecutionLog({ logs, status, isLoading }: ExecutionLogProps) {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-slate-400">
-                          {formatTimestamp(entry.timestamp)}
+                          {formatTimestamp(entry.timestamp, locale)}
                         </p>
                         {entry.stepId ? (
-                          <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-slate-400">{translatePipelineStep(entry.stepId)}</p>
+                          <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-slate-400">{translatePipelineStep(entry.stepId, locale)}</p>
                         ) : null}
                       </div>
                       <p className="mt-2 break-words text-sm leading-6 text-current">{entry.message}</p>

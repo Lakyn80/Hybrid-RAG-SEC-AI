@@ -1,7 +1,8 @@
 "use client";
 
-import { copy, translateAnswerMode, translateCacheState, translateStreamStatus } from "@/lib/i18n";
 import { StatusPill } from "@/components/StatusPill";
+import { useUiLocale } from "@/components/UiLocaleProvider";
+import { translateAnswerMode, translateCacheState, translateStreamStatus } from "@/lib/i18n";
 import { AskResponse, StreamConnectionStatus } from "@/lib/types";
 
 interface AnswerResultProps {
@@ -54,6 +55,7 @@ export function AnswerResult({
   error,
   streamStatus,
 }: AnswerResultProps) {
+  const { copy, locale } = useUiLocale();
   const sources = answer ? parseSourceLines(answer.sources) : [];
 
   return (
@@ -64,11 +66,11 @@ export function AnswerResult({
           <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{copy.answerResult.title}</h2>
         </div>
         <div className="flex flex-wrap gap-2">
-          {answer?.mode ? <StatusPill label={translateAnswerMode(answer.mode)} variant="info" /> : null}
+          {answer?.mode ? <StatusPill label={translateAnswerMode(answer.mode, locale)} variant="info" /> : null}
           {typeof answer?.cache_hit === "boolean" ? (
-            <StatusPill label={translateCacheState(answer.cache_hit)} variant={answer.cache_hit ? "success" : "warning"} />
+            <StatusPill label={translateCacheState(answer.cache_hit, locale)} variant={answer.cache_hit ? "success" : "warning"} />
           ) : null}
-          <StatusPill label={`${copy.common.streamLabel} ${translateStreamStatus(streamStatus)}`} variant={streamStatus === "fallback" ? "warning" : "neutral"} />
+          <StatusPill label={`${copy.common.streamLabel} ${translateStreamStatus(streamStatus, locale)}`} variant={streamStatus === "fallback" ? "warning" : "neutral"} />
         </div>
       </div>
 

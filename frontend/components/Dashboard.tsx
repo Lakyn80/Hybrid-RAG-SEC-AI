@@ -1,21 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AnswerResult } from "@/components/AnswerResult";
 import { ExecutionLog } from "@/components/ExecutionLog";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { PipelineVisualizer } from "@/components/PipelineVisualizer";
 import { PromptPanel } from "@/components/PromptPanel";
 import { QueryHistory } from "@/components/QueryHistory";
 import { SuggestedQuestions } from "@/components/SuggestedQuestions";
+import { useUiLocale } from "@/components/UiLocaleProvider";
 import { useAskPipeline } from "@/hooks/useAskPipeline";
 import { clearSystemCache } from "@/lib/api";
-import { copy } from "@/lib/i18n";
-
-const DEFAULT_QUERY = copy.dashboard.defaultQuery;
 
 export function Dashboard() {
-  const [query, setQuery] = useState(DEFAULT_QUERY);
+  const { copy, locale } = useUiLocale();
+  const [query, setQuery] = useState(copy.dashboard.defaultQuery);
   const [cacheMessage, setCacheMessage] = useState<string | null>(null);
   const [isDeletingCache, setIsDeletingCache] = useState(false);
   const {
@@ -28,6 +28,12 @@ export function Dashboard() {
     run,
     submitQuery,
   } = useAskPipeline();
+
+  useEffect(() => {
+    if (!history.length && !run.query) {
+      setQuery(copy.dashboard.defaultQuery);
+    }
+  }, [copy.dashboard.defaultQuery, history.length, run.query, locale]);
 
   const handleSubmit = async (value?: string) => {
     const nextQuery = (value ?? query).trim();
@@ -64,9 +70,12 @@ export function Dashboard() {
     <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-[1680px] flex-col px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
       <header className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="max-w-4xl">
-          <p className="mb-2 inline-flex rounded-full border border-brand/20 bg-brand-soft px-3 py-1 font-mono text-[11px] uppercase tracking-[0.26em] text-brand">
-            Hybrid RAG SEC AI
-          </p>
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <p className="inline-flex rounded-full border border-brand/20 bg-brand-soft px-3 py-1 font-mono text-[11px] uppercase tracking-[0.26em] text-brand">
+              Hybrid RAG SEC AI
+            </p>
+            <LanguageSwitcher />
+          </div>
           <h1 className="text-balance text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
             {copy.dashboard.heroTitle}
           </h1>

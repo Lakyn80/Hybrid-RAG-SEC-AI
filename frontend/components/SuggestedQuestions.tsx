@@ -2,14 +2,15 @@
 
 import { useEffect, useState } from "react";
 
+import { useUiLocale } from "@/components/UiLocaleProvider";
 import { getQuestionBank } from "@/lib/api";
-import { copy } from "@/lib/i18n";
 
 interface SuggestedQuestionsProps {
   onSelect: (query: string) => void;
 }
 
 export function SuggestedQuestions({ onSelect }: SuggestedQuestionsProps) {
+  const { copy } = useUiLocale();
   const [questions, setQuestions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
