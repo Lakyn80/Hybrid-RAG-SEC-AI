@@ -211,6 +211,23 @@ jobs:
           docker compose run --rm --no-deps rag-api python app/scripts/bootstrap_qdrant.py
           docker compose up -d rag-api rag-frontend
 
+          for attempt in $(seq 1 60); do
+            if curl -fsS "http://127.0.0.1:${FRONTEND_PORT}" >/dev/null 2>&1 \
+              && curl -fsS "http://127.0.0.1:${API_PORT:-8021}/api/health" >/dev/null 2>&1; then
+              break
+            fi
+
+            if [ "$attempt" -eq 60 ]; then
+              echo "Application did not become ready in time." >&2
+              docker compose ps >&2 || true
+              docker compose logs --tail=120 rag-api >&2 || true
+              docker compose logs --tail=120 rag-frontend >&2 || true
+              exit 1
+            fi
+
+            sleep 3
+          done
+
           docker ps -a \
             --filter "label=com.docker.compose.project=rag" \
             --filter "status=exited" \
