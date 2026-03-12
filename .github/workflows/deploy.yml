@@ -236,9 +236,27 @@ jobs:
             --filter "status=exited" \
             -q | xargs -r docker rm -f
 
-          ALL_IMAGE_IDS="$(docker images -q | sort -u || true)"
-          if [ -n "${ALL_IMAGE_IDS}" ]; then
-            printf '%s\n' "${ALL_IMAGE_IDS}" | xargs -r docker rmi -f >/dev/null 2>&1 || true
-          fi
+          CURRENT_API_IMAGE_ID="$(docker inspect hybrid-rag-api --format '{{.Image}}' 2>/dev/null || true)"
+          CURRENT_FRONTEND_IMAGE_ID="$(docker inspect hybrid-rag-frontend --format '{{.Image}}' 2>/dev/null || true)"
+
+          cleanup_project_images() {
+            local repo="$1"
+
+            docker image ls "$repo" --format '{{.ID}}' | sort -u | while read -r image_id; do
+              [ -n "$image_id" ] || continue
+
+              if [ "$image_id" = "$CURRENT_API_IMAGE_ID" ] || [ "$image_id" = "$CURRENT_FRONTEND_IMAGE_ID" ]; then
+                continue
+              fi
+
+              docker image rm -f "$image_id" >/dev/null 2>&1 || true
+            done
+          }
+
+          cleanup_project_images "$RAG_API_IMAGE"
+          cleanup_project_images "$RAG_FRONTEND_IMAGE"
+
+          docker image ls --filter "dangling=true" --format '{{.ID}}' \
+            | xargs -r docker rmi -f >/dev/null 2>&1 || true
           docker logout ghcr.io >/dev/null 2>&1 || true
           EOF
