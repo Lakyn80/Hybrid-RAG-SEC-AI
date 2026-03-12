@@ -1,64 +1,148 @@
 name: Deploy
 
 on:
-  workflow_run:
-    workflows:
-      - CI
-    types:
-      - completed
+  push:
     branches:
       - main
   workflow_dispatch:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-production
       cancel-in-progress: true
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate image tag
+        shell: bash
+        run: |
+          echo "IMAGE_TAG=v$(date +'%Y.%m.%d-%H%M')" >> "$GITHUB_ENV"
+          echo "GHCR_NAMESPACE=$(printf '%s' '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
+      - name: Define image names
+        shell: bash
+        run: |
+          echo "BASE_IMAGE=ghcr.io/${GHCR_NAMESPACE}/hybrid-rag-sec-ai-python-ai-base:1" >> "$GITHUB_ENV"
+          echo "RAG_API_IMAGE=ghcr.io/${GHCR_NAMESPACE}/hybrid-rag-sec-ai-rag-api" >> "$GITHUB_ENV"
+          echo "RAG_FRONTEND_IMAGE=ghcr.io/${GHCR_NAMESPACE}/hybrid-rag-sec-ai-rag-frontend" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push shared base image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./docker-ai-base/python-ai-base
+          push: true
+          provenance: false
+          tags: ${{ env.BASE_IMAGE }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Build and push rag-api image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          provenance: false
+          build-args: |
+            BASE_IMAGE=${{ env.BASE_IMAGE }}
+          tags: |
+            ${{ env.RAG_API_IMAGE }}:${{ env.IMAGE_TAG }}
+            ${{ env.RAG_API_IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Build and push rag-frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          provenance: false
+          build-args: |
+            NEXT_PUBLIC_BACKEND_URL=http://rag-api:8021
+          tags: |
+            ${{ env.RAG_FRONTEND_IMAGE }}:${{ env.IMAGE_TAG }}
+            ${{ env.RAG_FRONTEND_IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
       - name: Configure SSH
         shell: bash
         run: |
           install -m 700 -d ~/.ssh
-          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.SERVER_SSH_KEY_HETZNER }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -H "${{ secrets.SERVER_HOST_HETZNER }}" >> ~/.ssh/known_hosts
 
-      - name: Deploy to VPS
+      - name: Deploy to Hetzner
         shell: bash
+        env:
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          BASE_IMAGE: ${{ env.BASE_IMAGE }}
+          RAG_API_IMAGE: ${{ env.RAG_API_IMAGE }}
+          RAG_FRONTEND_IMAGE: ${{ env.RAG_FRONTEND_IMAGE }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          ssh -o StrictHostKeyChecking=yes "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" 'bash -s' <<'EOF'
+          ssh -o StrictHostKeyChecking=yes "${{ secrets.SERVER_USER_HETZNER }}@${{ secrets.SERVER_HOST_HETZNER }}" "IMAGE_TAG='$IMAGE_TAG' BASE_IMAGE='$BASE_IMAGE' RAG_API_IMAGE='$RAG_API_IMAGE' RAG_FRONTEND_IMAGE='$RAG_FRONTEND_IMAGE' GHCR_USERNAME='${{ github.actor }}' GHCR_TOKEN='$GITHUB_TOKEN' bash -s" <<'EOF'
           set -euo pipefail
 
           DEPLOY_DIR="$HOME/projects/rag"
           REPO_URL="${{ github.server_url }}/${{ github.repository }}.git"
-          GITHUB_TOKEN="${{ github.token }}"
-
-          auth_header=
-          if [ -n "$GITHUB_TOKEN" ]; then
-            auth_header=$(printf '%s' "x-access-token:$GITHUB_TOKEN" | base64 | tr -d '\n')
-          fi
+          ENV_FILE="$DEPLOY_DIR/.env"
+          VECTORSTORE_REL="data/vectorstore"
+          auth_header="$(printf '%s' "x-access-token:${GHCR_TOKEN}" | base64 | tr -d '\n')"
 
           git_auth() {
-            if [ -n "$auth_header" ]; then
-              git -c "http.extraHeader=AUTHORIZATION: basic $auth_header" "$@"
-            else
-              git "$@"
+            git -c "http.extraHeader=AUTHORIZATION: basic ${auth_header}" "$@"
+          }
+
+          preserve_vectorstore() {
+            local source_dir="$1"
+            local backup_dir="$2"
+
+            if [ -d "$source_dir/$VECTORSTORE_REL" ]; then
+              mkdir -p "$backup_dir/$VECTORSTORE_REL"
+              cp -a "$source_dir/$VECTORSTORE_REL/." "$backup_dir/$VECTORSTORE_REL/"
+            fi
+          }
+
+          restore_vectorstore() {
+            local backup_dir="$1"
+            local target_dir="$2"
+
+            if [ -d "$backup_dir/$VECTORSTORE_REL" ]; then
+              mkdir -p "$target_dir/$VECTORSTORE_REL"
+              cp -a "$backup_dir/$VECTORSTORE_REL/." "$target_dir/$VECTORSTORE_REL/"
             fi
           }
 
           mkdir -p "$(dirname "$DEPLOY_DIR")"
 
           if [ -d "$DEPLOY_DIR/.git" ]; then
+            PRESERVE_DIR="$(mktemp -d)"
+            preserve_vectorstore "$DEPLOY_DIR" "$PRESERVE_DIR"
+            git -C "$DEPLOY_DIR" restore --source=HEAD --worktree --staged "$VECTORSTORE_REL" || true
             git_auth -C "$DEPLOY_DIR" fetch origin main
             git -C "$DEPLOY_DIR" checkout main
             git_auth -C "$DEPLOY_DIR" pull --ff-only origin main
+            restore_vectorstore "$PRESERVE_DIR" "$DEPLOY_DIR"
+            rm -rf "$PRESERVE_DIR"
           elif [ -d "$DEPLOY_DIR" ]; then
             BACKUP_DIR="${DEPLOY_DIR}_backup_$(date +%Y%m%d_%H%M%S)"
             PRESERVE_DIR="$(mktemp -d)"
@@ -71,6 +155,8 @@ jobs:
               cp "$DEPLOY_DIR/docker-compose.override.yml" "$PRESERVE_DIR/docker-compose.override.yml"
             fi
 
+            preserve_vectorstore "$DEPLOY_DIR" "$PRESERVE_DIR"
+
             mv "$DEPLOY_DIR" "$BACKUP_DIR"
             git_auth clone --branch main --single-branch "$REPO_URL" "$DEPLOY_DIR"
 
@@ -82,28 +168,26 @@ jobs:
               mv "$PRESERVE_DIR/docker-compose.override.yml" "$DEPLOY_DIR/docker-compose.override.yml"
             fi
 
-            rmdir "$PRESERVE_DIR" 2>/dev/null || true
+            restore_vectorstore "$PRESERVE_DIR" "$DEPLOY_DIR"
+
+            rm -rf "$PRESERVE_DIR"
             echo "Backed up existing non-git deployment directory to: $BACKUP_DIR"
           else
             git_auth clone --branch main --single-branch "$REPO_URL" "$DEPLOY_DIR"
           fi
 
           cd "$DEPLOY_DIR"
-          ENV_FILE="$DEPLOY_DIR/.env"
-          COMPOSE_ENV_ARGS=()
 
           if [ -f "$ENV_FILE" ]; then
             set -a
             . "$ENV_FILE"
             set +a
-            COMPOSE_ENV_ARGS=(--env-file "$ENV_FILE")
           fi
 
           if [ -z "${FRONTEND_PORT:-}" ]; then
             for port in 3000 3001 3002 3010; do
               if ! ss -ltn "( sport = :$port )" | awk 'NR>1 {print $4}' | grep -q .; then
                 FRONTEND_PORT="$port"
-                export FRONTEND_PORT
                 break
               fi
             done
@@ -114,45 +198,37 @@ jobs:
             exit 1
           fi
 
-          get_service_image_id() {
-            local service="$1"
-            local container_id
+          export IMAGE_TAG
+          export FRONTEND_PORT
+          export RAG_API_IMAGE
+          export RAG_FRONTEND_IMAGE
 
-            container_id=$(docker compose "${COMPOSE_ENV_ARGS[@]}" ps -q "$service" 2>/dev/null || true)
-            if [ -n "$container_id" ]; then
-              docker inspect -f '{{.Image}}' "$container_id" 2>/dev/null || true
-            fi
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+
+          docker compose pull rag-api rag-frontend
+          docker compose down --remove-orphans
+          docker compose up -d redis qdrant
+          docker compose run --rm --no-deps rag-api python app/scripts/bootstrap_qdrant.py
+          docker compose up -d rag-api rag-frontend
+
+          cleanup_project_images() {
+            local repo="$1"
+
+            docker image ls "$repo" --format '{{.Repository}}:{{.Tag}}' | while read -r image_ref; do
+              [ -n "$image_ref" ] || continue
+              case "$image_ref" in
+                "${repo}:${IMAGE_TAG}"|"${repo}:latest"|*":<none>")
+                  continue
+                  ;;
+                *)
+                  docker image rm -f "$image_ref" >/dev/null 2>&1 || true
+                  ;;
+              esac
+            done
           }
 
-          remove_old_image_if_unused() {
-            local image_id="$1"
-
-            if [ -z "$image_id" ]; then
-              return 0
-            fi
-
-            if docker ps -aq --filter "ancestor=$image_id" | grep -q .; then
-              echo "Keeping image $image_id because it is still referenced by a container."
-              return 0
-            fi
-
-            docker image rm -f "$image_id" || true
-          }
-
-          echo "Deploying with FRONTEND_PORT=$FRONTEND_PORT"
-          if ! docker image inspect python-ai-base:1 >/dev/null 2>&1; then
-            echo "Missing required local base image: python-ai-base:1" >&2
-            exit 1
-          fi
-
-          OLD_API_IMAGE_ID="$(get_service_image_id rag-api)"
-          OLD_FRONTEND_IMAGE_ID="$(get_service_image_id rag-frontend)"
-
-          docker compose "${COMPOSE_ENV_ARGS[@]}" down --remove-orphans
-          DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 docker compose "${COMPOSE_ENV_ARGS[@]}" build rag-api rag-frontend
-          docker compose "${COMPOSE_ENV_ARGS[@]}" up -d redis qdrant
-          docker compose "${COMPOSE_ENV_ARGS[@]}" run --rm --no-deps rag-api python app/scripts/bootstrap_qdrant.py
-          docker compose "${COMPOSE_ENV_ARGS[@]}" up -d rag-api rag-frontend
-          remove_old_image_if_unused "$OLD_API_IMAGE_ID"
-          remove_old_image_if_unused "$OLD_FRONTEND_IMAGE_ID"
+          cleanup_project_images "$RAG_API_IMAGE"
+          cleanup_project_images "$RAG_FRONTEND_IMAGE"
+          docker image prune -f >/dev/null 2>&1 || true
+          docker logout ghcr.io >/dev/null 2>&1 || true
           EOF

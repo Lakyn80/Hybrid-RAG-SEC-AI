@@ -8,6 +8,11 @@ __pycache__/
 .ruff_cache/
 
 frontend/
+docker-ai-base/
+data/cache/
+data/raw/
+data/vectorstore/
+data/clean/filings_parsed.parquet
 
 *.pyc
 *.pyo

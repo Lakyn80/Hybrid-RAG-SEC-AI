@@ -16,7 +16,7 @@ services:
       - qdrant_data:/qdrant/storage
 
   rag-api:
-    build: .
+    image: ${RAG_API_IMAGE:-rag-rag-api}:${IMAGE_TAG:-latest}
     container_name: hybrid-rag-api
     depends_on:
       - redis
@@ -24,7 +24,7 @@ services:
     ports:
       - "${API_PORT:-8021}:8021"
     volumes:
-      - .:/app
+      - ./data/vectorstore:/app/data/vectorstore
     environment:
       REDIS_URL: redis://redis:6379/0
       QDRANT_URL: http://qdrant:6333
@@ -44,10 +44,7 @@ services:
       --access-logformat '%(h)s %(l)s %(u)s %(t)s \"%(r)s\" %(s)s %(b)s \"%(f)s\" \"%(a)s\"'
 
   rag-frontend:
-    build:
-      context: ./frontend
-      args:
-        NEXT_PUBLIC_BACKEND_URL: http://rag-api:8021
+    image: ${RAG_FRONTEND_IMAGE:-rag-rag-frontend}:${IMAGE_TAG:-latest}
     container_name: hybrid-rag-frontend
     depends_on:
       - rag-api
