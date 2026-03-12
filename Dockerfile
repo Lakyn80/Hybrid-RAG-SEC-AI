@@ -1,5 +1,4 @@
-ARG BASE_IMAGE=python-ai-base:1
-FROM ${BASE_IMAGE}
+FROM ghcr.io/lakyn80/python-ai-base:1
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
