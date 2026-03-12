@@ -2,6 +2,7 @@ def limit_context_rows(results_df, max_chunks=None):
     if results_df is None:
         return results_df
     return results_df.head(max_chunks or TOP_K)
+import asyncio
 from collections import Counter
 import os
 import re
@@ -35,6 +36,7 @@ from app.router.query_router import (
     extract_query_topic,
     get_company_display_name,
 )
+from app.services.demo_service import get_demo_response
 from app.services.query_guard import is_query_allowed
 from app.services.semantic_cache import lookup_semantic_cache, save_semantic_cache
 
@@ -156,6 +158,10 @@ LLM_MODEL = normalize_env_value(os.getenv("LLM_MODEL")) or "deepseek-chat"
 
 def llm_api_key_present() -> bool:
     return bool(normalize_env_value(os.getenv("DEEPSEEK_API_KEY")))
+
+
+def demo_mode_enabled() -> bool:
+    return normalize_env_value(os.getenv("DEMO_MODE")).lower() in {"1", "true", "yes", "on"}
 
 
 def infer_company_filter(query: str) -> str | None:
@@ -1315,6 +1321,7 @@ class GraphState(TypedDict, total=False):
     retrieval_cache_key: str
     retrieval_cache_hit: bool
     cache_key: str
+    demo_mode: bool
     cache_data: dict
     cached_entry: dict | None
     semantic_cached_entry: dict | None
@@ -1393,6 +1400,7 @@ def node_prepare(state: GraphState) -> GraphState:
         "retrieval_cache_key": retrieval_cache_key,
         "retrieval_cache_hit": False,
         "cache_key": cache_key,
+        "demo_mode": demo_mode_enabled(),
         "llm_model": LLM_MODEL,
         "cache_hit": False,
         "cache_mode": None,
@@ -1405,6 +1413,10 @@ def node_prepare(state: GraphState) -> GraphState:
 
 
 def node_cache_lookup(state: GraphState) -> GraphState:
+    if state.get("demo_mode"):
+        logger.info("cache_hit=False cache_bypass=demo_mode")
+        return {"cached_entry": None}
+
     if state.get("observation_only"):
         logger.info("cache_hit=False cache_bypass=observation")
         return {"cached_entry": None}
@@ -1446,6 +1458,12 @@ def node_cache_return(state: GraphState) -> GraphState:
 
 
 def node_semantic_cache_lookup(state: GraphState) -> GraphState:
+    if state.get("demo_mode"):
+        logger.info("semantic_cache_hit=False cache_bypass=demo_mode")
+        return {
+            "semantic_cached_entry": None,
+        }
+
     if state.get("observation_only"):
         logger.info("semantic_cache_hit=False cache_bypass=observation")
         return {
@@ -1779,6 +1797,19 @@ def route_after_query_guard(state: GraphState) -> str:
 def node_llm(state: GraphState) -> GraphState:
     try:
         emit_pipeline_event(state, "llm_generation_started")
+        if state.get("demo_mode"):
+            logger.info("calling_demo_llm")
+            demo_payload = asyncio.run(get_demo_response(state["query"]))
+            emit_pipeline_event(state, "answer_generated")
+            return {
+                "answer": str(demo_payload.get("answer") or ""),
+                "mode": "llm",
+                "cache_hit": False,
+                "cache_mode": "demo",
+                "llm_model": "demo-redis",
+                "llm_error": None,
+            }
+
         logger.info("calling_llm")
         start_llm = time.time()
         retrieved_documents = [
@@ -1836,6 +1867,9 @@ def node_save_semantic_cache(state: GraphState) -> GraphState:
     if state.get("observation_only"):
         return state
 
+    if state.get("demo_mode"):
+        return state
+
     if state.get("cache_hit") or state.get("retrieval_error") or state.get("llm_error"):
         return state
 
@@ -1860,6 +1894,10 @@ def node_save_semantic_cache(state: GraphState) -> GraphState:
 
 def node_save_cache(state: GraphState) -> GraphState:
     if state.get("observation_only"):
+        return state
+
+    if state.get("demo_mode"):
+        logger.info("cache_save_skipped=True cache_bypass=demo_mode")
         return state
 
     if state.get("cache_hit") or state.get("retrieval_error"):

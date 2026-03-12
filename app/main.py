@@ -2,6 +2,7 @@ from fastapi import FastAPI, Header, Response
 from pydantic import BaseModel
 
 from app.api.cache_admin import router as cache_admin_router
+from app.api.demo_admin import router as demo_admin_router
 from app.api.question_bank import router as question_bank_router
 from app.core.logger import get_logger
 from app.retrieval import resources as retrieval_resources
@@ -16,6 +17,7 @@ app = FastAPI(title="Hybrid RAG SEC AI")
 app.include_router(stream_router)
 app.include_router(question_bank_router)
 app.include_router(cache_admin_router)
+app.include_router(demo_admin_router)
 
 
 class AskRequest(BaseModel):

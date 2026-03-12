@@ -202,12 +202,16 @@ jobs:
           export FRONTEND_PORT
           export RAG_API_IMAGE
           export RAG_FRONTEND_IMAGE
+          export DEMO_MODE="${DEMO_MODE:-true}"
 
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 
           docker compose pull rag-api rag-frontend
           docker compose up -d redis qdrant
           docker compose run --rm --no-deps rag-api python app/scripts/bootstrap_qdrant.py
+          if [ "${DEMO_MODE}" = "true" ]; then
+            docker compose run --rm --no-deps rag-api python app/scripts/seed_demo_cache.py
+          fi
           docker compose up -d --force-recreate --no-deps rag-api rag-frontend
 
           for attempt in $(seq 1 60); do
