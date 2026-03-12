@@ -236,27 +236,9 @@ jobs:
             --filter "status=exited" \
             -q | xargs -r docker rm -f
 
-          cleanup_project_images() {
-            local repo="$1"
-
-            docker image ls "$repo" --format '{{.Repository}}:{{.Tag}}' | while read -r image_ref; do
-              [ -n "$image_ref" ] || continue
-              case "$image_ref" in
-                "${repo}:${IMAGE_TAG}"|"${repo}:latest"|*":<none>")
-                  continue
-                  ;;
-                *)
-                  docker image rm -f "$image_ref" >/dev/null 2>&1 || true
-                  ;;
-              esac
-            done
-          }
-
-          cleanup_project_images "$RAG_API_IMAGE"
-          cleanup_project_images "$RAG_FRONTEND_IMAGE"
-
-          docker image ls --filter "dangling=true" --format '{{.ID}}' \
-            | xargs -r docker rmi -f >/dev/null 2>&1 || true
-          docker image prune -f >/dev/null 2>&1 || true
+          ALL_IMAGE_IDS="$(docker images -q | sort -u || true)"
+          if [ -n "${ALL_IMAGE_IDS}" ]; then
+            printf '%s\n' "${ALL_IMAGE_IDS}" | xargs -r docker rmi -f >/dev/null 2>&1 || true
+          fi
           docker logout ghcr.io >/dev/null 2>&1 || true
           EOF
