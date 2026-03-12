@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Space_Grotesk } from "next/font/google";
 
+import { copy } from "@/lib/i18n";
 import "./globals.css";
 
 const spaceGrotesk = Space_Grotesk({
@@ -9,14 +10,14 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 const ibmPlexMono = IBM_Plex_Mono({
-  subsets: ["latin"],
+  subsets: ["latin", "cyrillic"],
   variable: "--font-ibm-plex-mono",
   weight: ["400", "500", "600"],
 });
 
 export const metadata: Metadata = {
-  title: "Hybrid RAG SEC AI Control Room",
-  description: "Live execution dashboard for the Hybrid RAG SEC AI pipeline.",
+  title: copy.metadata.title,
+  description: copy.metadata.description,
   icons: {
     icon: "/icon-512x512.png",
     apple: "/icon-512x512.png",
@@ -30,7 +31,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang={copy.metadata.lang}>
       <body className={`${spaceGrotesk.variable} ${ibmPlexMono.variable}`}>
         {children}
       </body>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useEventStream } from "@/hooks/useEventStream";
 import { askQuestion } from "@/lib/api";
+import { copy } from "@/lib/i18n";
 import { createInitialSteps } from "@/lib/pipelineMap";
 import {
   AskResponse,
@@ -184,7 +185,7 @@ function createLegacySnapshot(rawEntry: Record<string, unknown>): RunState {
       : null,
     error:
       status === "error"
-        ? "This older history entry does not contain a complete saved run snapshot."
+        ? copy.hookMessages.legacySnapshotMissing
         : null,
     isLoading: false,
     isStreaming: false,
@@ -466,7 +467,7 @@ export function useAskPipeline() {
         steps: markPromptActive(createInitialSteps()),
         logs: [
           createLogEntry(
-            "Query submitted from frontend control room.",
+            copy.hookMessages.querySubmitted,
             "frontend_query_submitted",
             "prompt",
             "system",
@@ -493,7 +494,7 @@ export function useAskPipeline() {
           hasOpenedStreamRef.current = true;
           addLog(
             createLogEntry(
-              "Live pipeline stream connected.",
+              copy.hookMessages.streamConnected,
               "frontend_stream_open",
               undefined,
               "system",
@@ -531,8 +532,8 @@ export function useAskPipeline() {
           }
 
           const fallbackMessage = hasOpenedStreamRef.current
-            ? "Live pipeline stream disconnected. Final answer request is still running."
-            : "Live stream is unavailable. Falling back to answer-only mode.";
+            ? copy.hookMessages.streamDisconnected
+            : copy.hookMessages.streamUnavailable;
 
           addLog(
             createLogEntry(
@@ -550,7 +551,7 @@ export function useAskPipeline() {
 
           addLog(
             createLogEntry(
-              "Unable to initialize EventSource. Falling back to answer-only mode.",
+              copy.hookMessages.streamInitFailed,
               "frontend_stream_exception",
               undefined,
               "system",
@@ -587,7 +588,7 @@ export function useAskPipeline() {
             logs: [
               ...previousRun.logs,
               createLogEntry(
-                "Final answer received from /api/ask.",
+                copy.hookMessages.answerReceived,
                 "frontend_answer_received",
                 "answer",
                 "system",
@@ -614,7 +615,7 @@ export function useAskPipeline() {
         const message =
           error instanceof Error
             ? error.message
-            : "Request failed. The backend did not return a valid answer.";
+            : copy.hookMessages.requestFailed;
 
         let historyEntry: HistoryEntry | null = null;
         setRun((previousRun) => {

@@ -10,8 +10,9 @@ import { QueryHistory } from "@/components/QueryHistory";
 import { SuggestedQuestions } from "@/components/SuggestedQuestions";
 import { useAskPipeline } from "@/hooks/useAskPipeline";
 import { clearSystemCache } from "@/lib/api";
+import { copy } from "@/lib/i18n";
 
-const DEFAULT_QUERY = "What legal risks did Apple mention in its 10-K filings?";
+const DEFAULT_QUERY = copy.dashboard.defaultQuery;
 
 export function Dashboard() {
   const [query, setQuery] = useState(DEFAULT_QUERY);
@@ -45,13 +46,14 @@ export function Dashboard() {
     try {
       const result = await clearSystemCache();
       setCacheMessage(
-        `Cache cleared. Redis keys deleted: ${result.redis_keys_deleted}. Answer cache file reset: ${
-          result.answer_cache_cleared ? "yes" : "no"
-        }.`,
+        copy.dashboard.cacheClearedMessage(
+          result.redis_keys_deleted,
+          result.answer_cache_cleared,
+        ),
       );
     } catch (error) {
       setCacheMessage(
-        error instanceof Error ? error.message : "Failed to clear backend cache.",
+        error instanceof Error ? error.message : copy.dashboard.cacheClearError,
       );
     } finally {
       setIsDeletingCache(false);
@@ -66,16 +68,15 @@ export function Dashboard() {
             Hybrid RAG SEC AI
           </p>
           <h1 className="text-balance text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
-            Live pipeline control room for AI-powered SEC filing retrieval and answer generation.
+            {copy.dashboard.heroTitle}
           </h1>
         </div>
         <div className="max-w-xl rounded-3xl border border-slate-200/80 bg-white/85 px-5 py-4 shadow-panel">
           <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-slate-500">
-            Runtime profile
+            {copy.dashboard.runtimeProfileLabel}
           </p>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Two-panel dashboard for demos, debugging, and technical presentations. The UI listens to live
-            pipeline events and renders the final grounded answer from the production backend.
+            {copy.dashboard.runtimeProfileText}
           </p>
         </div>
       </header>

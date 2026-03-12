@@ -3,6 +3,7 @@ import {
   PipelineStepId,
   PipelineStepState,
 } from "@/lib/types";
+import { copy, translateBackendEvent } from "@/lib/i18n";
 
 const PIPELINE_STEP_DEFINITIONS: Array<{
   id: PipelineStepId;
@@ -11,38 +12,38 @@ const PIPELINE_STEP_DEFINITIONS: Array<{
 }> = [
   {
     id: "prompt",
-    label: "Prompt",
-    description: "Incoming user request enters the runtime graph.",
+    label: copy.pipeline.steps.prompt.label,
+    description: copy.pipeline.steps.prompt.description,
   },
   {
     id: "embedding",
-    label: "Embedding",
-    description: "Query gets transformed into vector space for retrieval.",
+    label: copy.pipeline.steps.embedding.label,
+    description: copy.pipeline.steps.embedding.description,
   },
   {
     id: "retrieval",
-    label: "Hybrid Retrieval",
-    description: "Qdrant and BM25 search run and merge their candidates.",
+    label: copy.pipeline.steps.retrieval.label,
+    description: copy.pipeline.steps.retrieval.description,
   },
   {
     id: "rerank",
-    label: "Rerank",
-    description: "CrossEncoder rescoring refines the highest-value chunks.",
+    label: copy.pipeline.steps.rerank.label,
+    description: copy.pipeline.steps.rerank.description,
   },
   {
     id: "context",
-    label: "Context Build",
-    description: "Top grounded excerpts are formatted for answer generation.",
+    label: copy.pipeline.steps.context.label,
+    description: copy.pipeline.steps.context.description,
   },
   {
     id: "llm",
-    label: "LLM",
-    description: "LLM generates the final grounded response.",
+    label: copy.pipeline.steps.llm.label,
+    description: copy.pipeline.steps.llm.description,
   },
   {
     id: "answer",
-    label: "Answer",
-    description: "Final answer and sources are returned to the interface.",
+    label: copy.pipeline.steps.answer.label,
+    description: copy.pipeline.steps.answer.description,
   },
 ];
 
@@ -90,6 +91,11 @@ function extractRawMessage(payload: string): string {
 }
 
 function humanizeMessage(message: string): string {
+  const translated = translateBackendEvent(message);
+  if (translated) {
+    return translated;
+  }
+
   return message
     .replace(/_/g, " ")
     .replace(/\s+/g, " ")

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { getQuestionBank } from "@/lib/api";
+import { copy } from "@/lib/i18n";
 
 interface SuggestedQuestionsProps {
   onSelect: (query: string) => void;
@@ -24,7 +25,7 @@ export function SuggestedQuestions({ onSelect }: SuggestedQuestionsProps) {
       setError(
         loadError instanceof Error
           ? loadError.message
-          : "Failed to load suggested questions.",
+          : copy.suggestedQuestions.loadError,
       );
     } finally {
       setIsLoading(false);
@@ -40,10 +41,10 @@ export function SuggestedQuestions({ onSelect }: SuggestedQuestionsProps) {
       <div className="mb-5 flex items-end justify-between gap-4">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-slate-500">
-            Suggested questions
+            {copy.suggestedQuestions.eyebrow}
           </p>
           <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
-            Question bank
+            {copy.suggestedQuestions.title}
           </h2>
         </div>
 
@@ -55,7 +56,7 @@ export function SuggestedQuestions({ onSelect }: SuggestedQuestionsProps) {
           disabled={isLoading}
           className="rounded-full border border-slate-200 bg-white px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {isLoading ? "Loading..." : "Refresh"}
+          {isLoading ? copy.suggestedQuestions.loading : copy.suggestedQuestions.refresh}
         </button>
       </div>
 
@@ -67,7 +68,7 @@ export function SuggestedQuestions({ onSelect }: SuggestedQuestionsProps) {
 
       {!error && questions.length === 0 && !isLoading ? (
         <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm leading-6 text-slate-500">
-          No suggested questions available.
+          {copy.suggestedQuestions.empty}
         </div>
       ) : null}
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { StatusPill } from "@/components/StatusPill";
+import { copy, translateStreamStatus } from "@/lib/i18n";
 import { PipelineStepState, StreamConnectionStatus } from "@/lib/types";
 
 interface PipelineVisualizerProps {
@@ -43,12 +44,12 @@ export function PipelineVisualizer({
     <section className="panel rounded-[32px] p-5 sm:p-6">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-slate-500">Pipeline view</p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Execution map</h2>
+          <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-slate-500">{copy.pipeline.eyebrow}</p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{copy.pipeline.title}</h2>
         </div>
         <div className="flex flex-wrap gap-2">
-          <StatusPill label={`stream ${status}`} variant={status === "open" ? "success" : status === "fallback" ? "warning" : "neutral"} />
-          <StatusPill label={isLoading ? "active run" : "ready"} variant={isLoading ? "info" : "neutral"} />
+          <StatusPill label={`${copy.common.streamLabel} ${translateStreamStatus(status)}`} variant={status === "open" ? "success" : status === "fallback" ? "warning" : "neutral"} />
+          <StatusPill label={isLoading ? copy.common.activeRun : copy.common.ready} variant={isLoading ? "info" : "neutral"} />
         </div>
       </div>
 

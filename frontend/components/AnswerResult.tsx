@@ -1,5 +1,6 @@
 "use client";
 
+import { copy, translateAnswerMode, translateCacheState, translateStreamStatus } from "@/lib/i18n";
 import { StatusPill } from "@/components/StatusPill";
 import { AskResponse, StreamConnectionStatus } from "@/lib/types";
 
@@ -59,15 +60,15 @@ export function AnswerResult({
     <section className="panel rounded-[32px] p-5 sm:p-6">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-slate-500">Final answer</p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Grounded response</h2>
+          <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-slate-500">{copy.answerResult.eyebrow}</p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{copy.answerResult.title}</h2>
         </div>
         <div className="flex flex-wrap gap-2">
-          {answer?.mode ? <StatusPill label={answer.mode} variant="info" /> : null}
+          {answer?.mode ? <StatusPill label={translateAnswerMode(answer.mode)} variant="info" /> : null}
           {typeof answer?.cache_hit === "boolean" ? (
-            <StatusPill label={answer.cache_hit ? "cache hit" : "cache miss"} variant={answer.cache_hit ? "success" : "warning"} />
+            <StatusPill label={translateCacheState(answer.cache_hit)} variant={answer.cache_hit ? "success" : "warning"} />
           ) : null}
-          <StatusPill label={`stream ${streamStatus}`} variant={streamStatus === "fallback" ? "warning" : "neutral"} />
+          <StatusPill label={`${copy.common.streamLabel} ${translateStreamStatus(streamStatus)}`} variant={streamStatus === "fallback" ? "warning" : "neutral"} />
         </div>
       </div>
 
@@ -79,7 +80,7 @@ export function AnswerResult({
 
       {!error && !answer && !isLoading ? (
         <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-5 py-10 text-sm leading-7 text-slate-500">
-          The final answer will appear here once the backend completes the run.
+          {copy.answerResult.waiting}
         </div>
       ) : null}
 
@@ -97,30 +98,30 @@ export function AnswerResult({
       {answer ? (
         <div className="space-y-5">
           <div className="rounded-[26px] border border-slate-200 bg-white px-5 py-5">
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-slate-500">Query</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-slate-500">{copy.answerResult.query}</p>
             <p className="mt-2 text-sm leading-7 text-slate-700">{answer.query}</p>
           </div>
 
           <div className="rounded-[26px] border border-slate-200 bg-white px-5 py-5">
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-slate-500">Answer</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-slate-500">{copy.answerResult.answer}</p>
             <div className="mt-3">{renderAnswerBlocks(answer.answer)}</div>
             <div className="mt-4 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-              <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-slate-500">LLM Run Info</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-slate-500">{copy.answerResult.llmRunInfo}</p>
               <p className="mt-2 break-all">
-                <span className="font-medium text-slate-700">run_id:</span>{" "}
-                {answer.run_id ?? "n/a"}
+                <span className="font-medium text-slate-700">{copy.answerResult.runId}:</span>{" "}
+                {answer.run_id ?? copy.common.notAvailable}
               </p>
               <p className="mt-1">
-                <span className="font-medium text-slate-700">source:</span>{" "}
-                {answer.cache_hit ? "cache" : "pipeline"}
+                <span className="font-medium text-slate-700">{copy.answerResult.source}:</span>{" "}
+                {answer.cache_hit ? copy.answerResult.cache : copy.answerResult.pipeline}
               </p>
             </div>
           </div>
 
           <div className="rounded-[26px] border border-slate-200 bg-white px-5 py-5">
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-slate-500">Sources</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-slate-500">{copy.answerResult.sources}</p>
             {sources.length === 0 ? (
-              <p className="mt-3 text-sm leading-7 text-slate-500">No sources returned.</p>
+              <p className="mt-3 text-sm leading-7 text-slate-500">{copy.answerResult.noSources}</p>
             ) : (
               <ul className="mt-3 space-y-3">
                 {sources.map((sourceLine, index) => (

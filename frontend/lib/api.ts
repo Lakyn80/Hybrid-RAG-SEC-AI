@@ -4,6 +4,7 @@ import {
   CacheClearResponse,
   QuestionBankResponse,
 } from "@/lib/types";
+import { copy } from "@/lib/i18n";
 
 function delay(ms: number) {
   return new Promise((resolve) => {
@@ -37,7 +38,7 @@ export async function askQuestion(
           continue;
         }
 
-        throw new Error(`Backend request failed with status ${response.status}.`);
+        throw new Error(copy.apiErrors.backendRequestFailedStatus(response.status));
       }
 
       const runId = response.headers.get("X-Run-ID") || options?.runId || null;
@@ -48,7 +49,7 @@ export async function askQuestion(
         run_id: runId,
       };
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error("Backend request failed.");
+      lastError = error instanceof Error ? error : new Error(copy.apiErrors.backendRequestFailed);
       if (attempt === 0) {
         await delay(900);
         continue;
@@ -57,7 +58,7 @@ export async function askQuestion(
     }
   }
 
-  throw lastError ?? new Error("Backend request failed.");
+  throw lastError ?? new Error(copy.apiErrors.backendRequestFailed);
 }
 
 export async function clearSystemCache(): Promise<CacheClearResponse> {
@@ -67,7 +68,7 @@ export async function clearSystemCache(): Promise<CacheClearResponse> {
   });
 
   if (!response.ok) {
-    throw new Error(`Cache clear failed with status ${response.status}.`);
+    throw new Error(copy.apiErrors.cacheClearFailedStatus(response.status));
   }
 
   return (await response.json()) as CacheClearResponse;
@@ -87,13 +88,13 @@ export async function getQuestionBank(): Promise<QuestionBankResponse> {
     });
 
     if (!response.ok) {
-      throw new Error(`Question bank request failed with status ${response.status}.`);
+      throw new Error(copy.apiErrors.questionBankFailedStatus(response.status));
     }
 
     return (await response.json()) as QuestionBankResponse;
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("Question bank request timed out.");
+      throw new Error(copy.apiErrors.questionBankTimedOut);
     }
 
     throw error;

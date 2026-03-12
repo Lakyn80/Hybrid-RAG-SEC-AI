@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
+import { copy, translatePipelineStep, translateStreamStatus } from "@/lib/i18n";
 import { StatusPill } from "@/components/StatusPill";
 import { ExecutionLogEntry, StreamConnectionStatus } from "@/lib/types";
 
@@ -14,22 +15,22 @@ interface ExecutionLogProps {
 function statusLabel(status: StreamConnectionStatus) {
   switch (status) {
     case "connecting":
-      return { label: "Connecting", variant: "info" as const };
+      return { label: translateStreamStatus(status), variant: "info" as const };
     case "open":
-      return { label: "Live stream", variant: "success" as const };
+      return { label: translateStreamStatus(status), variant: "success" as const };
     case "fallback":
-      return { label: "Answer only", variant: "warning" as const };
+      return { label: translateStreamStatus(status), variant: "warning" as const };
     case "error":
-      return { label: "Stream error", variant: "danger" as const };
+      return { label: translateStreamStatus(status), variant: "danger" as const };
     case "closed":
-      return { label: "Closed", variant: "neutral" as const };
+      return { label: translateStreamStatus(status), variant: "neutral" as const };
     default:
-      return { label: "Idle", variant: "neutral" as const };
+      return { label: translateStreamStatus(status), variant: "neutral" as const };
   }
 }
 
 function formatTimestamp(timestamp: string) {
-  return new Date(timestamp).toLocaleTimeString([], {
+  return new Date(timestamp).toLocaleTimeString(copy.metadata.lang, {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -54,12 +55,12 @@ export function ExecutionLog({ logs, status, isLoading }: ExecutionLogProps) {
     <section className="panel rounded-[32px] p-5 sm:p-6">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-slate-500">Execution log</p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Live pipeline trace</h2>
+          <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-slate-500">{copy.executionLog.eyebrow}</p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{copy.executionLog.title}</h2>
         </div>
         <div className="flex flex-wrap gap-2">
           <StatusPill label={pill.label} variant={pill.variant} />
-          {isLoading ? <StatusPill label="Run active" variant="info" /> : <StatusPill label="Standby" variant="neutral" />}
+          {isLoading ? <StatusPill label={copy.common.activeRun} variant="info" /> : <StatusPill label={copy.common.standby} variant="neutral" />}
         </div>
       </div>
 
@@ -69,7 +70,7 @@ export function ExecutionLog({ logs, status, isLoading }: ExecutionLogProps) {
       >
         {logs.length === 0 ? (
           <div className="flex min-h-[320px] items-center justify-center rounded-[20px] border border-dashed border-slate-700 bg-slate-900/70 px-6 text-center text-sm leading-7 text-slate-400">
-            Start a query to watch backend events arrive here in real time.
+            {copy.executionLog.empty}
           </div>
         ) : (
           <ol className="space-y-2">
@@ -96,7 +97,7 @@ export function ExecutionLog({ logs, status, isLoading }: ExecutionLogProps) {
                           {formatTimestamp(entry.timestamp)}
                         </p>
                         {entry.stepId ? (
-                          <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-slate-400">{entry.stepId}</p>
+                          <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-slate-400">{translatePipelineStep(entry.stepId)}</p>
                         ) : null}
                       </div>
                       <p className="mt-2 break-words text-sm leading-6 text-current">{entry.message}</p>
