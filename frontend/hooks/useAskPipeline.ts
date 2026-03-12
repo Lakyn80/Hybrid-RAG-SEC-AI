@@ -567,10 +567,12 @@ export function useAskPipeline() {
 
         let historyEntry: HistoryEntry | null = null;
         setRun((previousRun) => {
-          const streamStillActive =
-            hasOpenedStreamRef.current ||
-            previousRun.streamStatus === "open" ||
-            previousRun.streamStatus === "connecting";
+          const observedStreamEvents =
+            observedStreamEventRef.current || hasOpenedStreamRef.current;
+          const completedSteps = finalizeSteps(
+            advanceSteps(previousRun.steps, "answer", "info", true),
+            observedStreamEvents,
+          );
 
           const nextRun: RunState = {
             ...previousRun,
@@ -578,17 +580,10 @@ export function useAskPipeline() {
             answer,
             error: null,
             isLoading: false,
-            isStreaming: streamStillActive,
-            streamStatus: streamStillActive
-              ? previousRun.streamStatus
-              : observedStreamEventRef.current
-                ? "closed"
-                : "fallback",
-            observedStreamEvents: observedStreamEventRef.current,
-            steps:
-              answer.mode === "cache" && !observedStreamEventRef.current
-                ? finalizeSteps(previousRun.steps, false)
-                : previousRun.steps,
+            isStreaming: false,
+            streamStatus: observedStreamEvents ? "closed" : "fallback",
+            observedStreamEvents,
+            steps: completedSteps,
             logs: [
               ...previousRun.logs,
               createLogEntry(
@@ -604,9 +599,7 @@ export function useAskPipeline() {
           return nextRun;
         });
 
-        if (!hasOpenedStreamRef.current && !observedStreamEventRef.current) {
-          close();
-        }
+        close();
 
         if (historyEntry) {
           addHistory(historyEntry);
