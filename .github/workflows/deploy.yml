@@ -211,6 +211,11 @@ jobs:
           docker compose run --rm --no-deps rag-api python app/scripts/bootstrap_qdrant.py
           docker compose up -d rag-api rag-frontend
 
+          docker ps -a \
+            --filter "label=com.docker.compose.project=rag" \
+            --filter "status=exited" \
+            -q | xargs -r docker rm -f
+
           cleanup_project_images() {
             local repo="$1"
 
@@ -229,6 +234,9 @@ jobs:
 
           cleanup_project_images "$RAG_API_IMAGE"
           cleanup_project_images "$RAG_FRONTEND_IMAGE"
+
+          docker image ls --filter "dangling=true" --format '{{.ID}}' \
+            | xargs -r docker rmi -f >/dev/null 2>&1 || true
           docker image prune -f >/dev/null 2>&1 || true
           docker logout ghcr.io >/dev/null 2>&1 || true
           EOF
