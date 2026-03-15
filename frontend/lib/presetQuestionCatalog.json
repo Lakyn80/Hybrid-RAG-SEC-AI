@@ -1,0 +1,190 @@
+[
+  {
+    "id": "suggested-01",
+    "kind": "suggested",
+    "query": "What legal risks did Apple mention in its 10-K filings?"
+  },
+  {
+    "id": "suggested-02",
+    "kind": "suggested",
+    "query": "What legal risks did NVIDIA mention in its 10-K filings?"
+  },
+  {
+    "id": "suggested-03",
+    "kind": "suggested",
+    "query": "What legal risks did Alphabet mention in its 10-K filings?"
+  },
+  {
+    "id": "suggested-04",
+    "kind": "suggested",
+    "query": "Summarize the legal proceedings mentioned in Apple's 10-K."
+  },
+  {
+    "id": "suggested-05",
+    "kind": "suggested",
+    "query": "Summarize the legal proceedings mentioned in NVIDIA's 10-K."
+  },
+  {
+    "id": "suggested-06",
+    "kind": "suggested",
+    "query": "Summarize the legal proceedings mentioned in Alphabet's 10-K."
+  },
+  {
+    "id": "suggested-07",
+    "kind": "suggested",
+    "query": "What litigation risks are described in Apple's annual report?"
+  },
+  {
+    "id": "suggested-08",
+    "kind": "suggested",
+    "query": "What litigation risks are described in NVIDIA's annual report?"
+  },
+  {
+    "id": "suggested-09",
+    "kind": "suggested",
+    "query": "What litigation risks are described in Alphabet's annual report?"
+  },
+  {
+    "id": "suggested-10",
+    "kind": "suggested",
+    "query": "What regulatory risks does Apple describe in its 10-K?"
+  },
+  {
+    "id": "suggested-11",
+    "kind": "suggested",
+    "query": "What regulatory risks does NVIDIA describe in its 10-K?"
+  },
+  {
+    "id": "suggested-12",
+    "kind": "suggested",
+    "query": "What regulatory risks does Alphabet describe in its 10-K?"
+  },
+  {
+    "id": "suggested-13",
+    "kind": "suggested",
+    "query": "What cybersecurity risks are described in Apple's annual report?"
+  },
+  {
+    "id": "suggested-14",
+    "kind": "suggested",
+    "query": "What cybersecurity risks are described in NVIDIA's annual report?"
+  },
+  {
+    "id": "suggested-15",
+    "kind": "suggested",
+    "query": "What cybersecurity risks are described in Alphabet's annual report?"
+  },
+  {
+    "id": "suggested-16",
+    "kind": "suggested",
+    "query": "What supply chain risks does Apple describe in its filings?"
+  },
+  {
+    "id": "suggested-17",
+    "kind": "suggested",
+    "query": "What supply chain risks does NVIDIA describe in its filings?"
+  },
+  {
+    "id": "suggested-18",
+    "kind": "suggested",
+    "query": "What supply chain risks does Alphabet describe in its filings?"
+  },
+  {
+    "id": "suggested-19",
+    "kind": "suggested",
+    "query": "What intellectual property risks did Apple mention in its 10-K?"
+  },
+  {
+    "id": "suggested-20",
+    "kind": "suggested",
+    "query": "What intellectual property risks did NVIDIA mention in its 10-K?"
+  },
+  {
+    "id": "quick-legal-risks",
+    "kind": "quick_audit",
+    "icon": "⚖️",
+    "title": "Pravni rizika",
+    "description": "Soudni spory, compliance a regulatorni expozice.",
+    "query": "Vyhodnot hlavni pravni rizika spolecnosti podle posledniho SEC 10-K a vypis jejich investorum relevantni dopad.",
+    "compositeQueries": [
+      {
+        "label": "Apple",
+        "query": "Using Apple's 10-K filings, answer in Czech: summarize the main legal risks relevant to investors, including litigation, regulatory, compliance, and intellectual property exposure."
+      },
+      {
+        "label": "NVIDIA",
+        "query": "Using NVIDIA's 10-K filings, answer in Czech: summarize the main legal risks relevant to investors, including litigation, regulatory, compliance, and intellectual property exposure."
+      },
+      {
+        "label": "Alphabet",
+        "query": "Using Alphabet's 10-K filings, answer in Czech: summarize the main legal risks relevant to investors, including litigation, regulatory, compliance, and intellectual property exposure."
+      }
+    ]
+  },
+  {
+    "id": "quick-financial-health",
+    "kind": "quick_audit",
+    "icon": "💰",
+    "title": "Financni zdravi",
+    "description": "Likvidita, marze, dluh a stabilita cash flow.",
+    "query": "Posud financni zdravi spolecnosti na zaklade posledniho SEC 10-K a shrn klicove signaly pro investora.",
+    "compositeQueries": [
+      {
+        "label": "Apple",
+        "query": "Using Apple's 10-K filings, answer in Czech: assess the company's financial health for an investor. Cover liquidity, cash flow, margins, debt, capital allocation, and key positive and negative signals."
+      },
+      {
+        "label": "NVIDIA",
+        "query": "Using NVIDIA's 10-K filings, answer in Czech: assess the company's financial health for an investor. Cover liquidity, cash flow, margins, debt, capital allocation, and key positive and negative signals."
+      },
+      {
+        "label": "Alphabet",
+        "query": "Using Alphabet's 10-K filings, answer in Czech: assess the company's financial health for an investor. Cover liquidity, cash flow, margins, debt, capital allocation, and key positive and negative signals."
+      }
+    ]
+  },
+  {
+    "id": "quick-cybersecurity",
+    "kind": "quick_audit",
+    "icon": "🛡️",
+    "title": "Kyberbezpecnost",
+    "description": "Incidenty, ochrana dat a provozni odolnost.",
+    "query": "Najdi a shrn kyberbezpecnostni rizika firmy uvedena v poslednich SEC filings vcetne dopadu na provoz a reputaci.",
+    "compositeQueries": [
+      {
+        "label": "Apple",
+        "query": "Using Apple's 10-K filings, answer in Czech: summarize the main cybersecurity risks, governance signals, and possible operational, legal, and reputational impacts for an investor."
+      },
+      {
+        "label": "NVIDIA",
+        "query": "Using NVIDIA's 10-K filings, answer in Czech: summarize the main cybersecurity risks, governance signals, and possible operational, legal, and reputational impacts for an investor."
+      },
+      {
+        "label": "Alphabet",
+        "query": "Using Alphabet's 10-K filings, answer in Czech: summarize the main cybersecurity risks, governance signals, and possible operational, legal, and reputational impacts for an investor."
+      }
+    ]
+  },
+  {
+    "id": "quick-supply-chain",
+    "kind": "quick_audit",
+    "icon": "🏭",
+    "title": "Dodavatelsky retezec",
+    "description": "Koncentrace dodavatelu, vyroba a geopoliticke tlaky.",
+    "query": "Prover rizika dodavatelskeho retezce v poslednim SEC 10-K a vysvetli jejich mozny dopad na vynosy a provoz.",
+    "compositeQueries": [
+      {
+        "label": "Apple",
+        "query": "Using Apple's 10-K filings, answer in Czech: summarize the main supply chain risks, including supplier concentration, manufacturing dependencies, geopolitics, capacity constraints, and likely impact on revenue and operations."
+      },
+      {
+        "label": "NVIDIA",
+        "query": "Using NVIDIA's 10-K filings, answer in Czech: summarize the main supply chain risks, including supplier concentration, manufacturing dependencies, geopolitics, capacity constraints, and likely impact on revenue and operations."
+      },
+      {
+        "label": "Alphabet",
+        "query": "Using Alphabet's 10-K filings, answer in Czech: summarize the main supply chain risks, including supplier concentration, manufacturing dependencies, geopolitics, capacity constraints, and likely impact on revenue and operations."
+      }
+    ]
+  }
+]

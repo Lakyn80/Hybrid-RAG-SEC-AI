@@ -15,23 +15,23 @@ function stepTone(status: PipelineStepState["status"]) {
   switch (status) {
     case "active":
       return {
-        card: "border-brand/40 bg-brand-soft text-brand animate-pulseGlow",
-        dot: "bg-brand",
+        card: "border-[#f5d15a]/60 bg-[linear-gradient(180deg,rgba(250,220,120,0.12),rgba(18,18,18,0.98))] text-slate-100 animate-pulseGlow",
+        dot: "bg-[#f5d15a] shadow-[0_0_18px_rgba(245,209,90,0.75)]",
       };
     case "completed":
       return {
-        card: "border-emerald-200 bg-emerald-50 text-emerald-700",
-        dot: "bg-emerald-600",
+        card: "border-slate-500 bg-[#121212] text-slate-100",
+        dot: "bg-slate-200",
       };
     case "error":
       return {
-        card: "border-red-200 bg-red-50 text-red-700",
+        card: "border-red-500/40 bg-red-500/10 text-red-100",
         dot: "bg-red-600",
       };
     default:
       return {
-        card: "border-slate-200 bg-white text-slate-500",
-        dot: "bg-slate-300",
+        card: "border-line bg-[#0d0d0d] text-slate-500",
+        dot: "bg-slate-600",
       };
   }
 }
@@ -42,12 +42,19 @@ export function PipelineVisualizer({
   isLoading,
 }: PipelineVisualizerProps) {
   const { copy, locale } = useUiLocale();
+  const primarySteps = steps.filter((step) =>
+    ["embedding", "retrieval", "rerank", "llm"].includes(step.id),
+  );
+  const secondarySteps = steps.filter((step) =>
+    !["embedding", "retrieval", "rerank", "llm"].includes(step.id),
+  );
+
   return (
-    <section className="panel rounded-[32px] p-5 sm:p-6">
+    <section className="panel p-5 sm:p-6">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-slate-500">{copy.pipeline.eyebrow}</p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{copy.pipeline.title}</h2>
+          <h2 className="text-metallic-gold mt-2 text-2xl font-semibold tracking-tight">{copy.pipeline.title}</h2>
         </div>
         <div className="flex flex-wrap gap-2">
           <StatusPill label={`${copy.common.streamLabel} ${translateStreamStatus(status, locale)}`} variant={status === "open" ? "success" : status === "fallback" ? "warning" : "neutral"} />
@@ -55,34 +62,66 @@ export function PipelineVisualizer({
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-7">
-        {steps.map((step, index) => {
+      <div className="grid gap-px border border-line bg-line md:grid-cols-4">
+        {primarySteps.map((step, index) => {
           const tone = stepTone(step.status);
-          const connectorActive = index < steps.length - 1 && (step.status === "active" || step.status === "completed");
+          const connectorActive =
+            index < primarySteps.length - 1 &&
+            (step.status === "active" || step.status === "completed");
 
           return (
-            <div key={step.id} className="relative">
-              <div className={`relative h-full rounded-[24px] border px-4 py-4 transition ${tone.card}`}>
+            <div key={step.id} className="relative bg-paper">
+              <div className={`relative h-full min-h-[190px] border px-4 py-5 transition ${tone.card}`}>
                 <div className="flex items-start justify-between gap-3">
                   <span className={`mt-1 h-3 w-3 rounded-full ${tone.dot}`} />
                   <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-current/70">
                     {String(index + 1).padStart(2, "0")}
                   </span>
                 </div>
-                <h3 className="mt-5 text-base font-semibold tracking-tight">{step.label}</h3>
-                <p className="mt-2 text-sm leading-6 text-current/80">{step.description}</p>
+                <div className="mt-10">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-current/55">
+                    Datové ověření
+                  </p>
+                  <h3 className="text-metallic-gold mt-3 text-base font-semibold tracking-tight">{step.label}</h3>
+                  <p className="mt-3 text-sm leading-6 text-current/80">{step.description}</p>
+                </div>
               </div>
 
-              {index < steps.length - 1 ? (
+              {index < primarySteps.length - 1 ? (
                 <div
-                  className={`hidden md:block absolute left-[calc(100%-8px)] top-1/2 h-[2px] w-4 -translate-y-1/2 ${
-                    connectorActive ? "bg-brand/60" : "bg-slate-200"
+                  className={`hidden md:block absolute left-[calc(100%-1px)] top-[29px] h-px w-[calc(100%+2px)] ${
+                    connectorActive ? "bg-[#f5d15a]/75" : "bg-slate-700"
                   }`}
                 />
               ) : null}
             </div>
           );
         })}
+      </div>
+
+      <div className="mt-5">
+        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-slate-500">
+          Kontrolní body
+        </p>
+        <div className="mt-3 grid gap-px border border-line bg-line sm:grid-cols-3">
+          {secondarySteps.map((step) => {
+            const tone = stepTone(step.status);
+
+            return (
+              <div key={step.id} className={`border px-4 py-3 ${tone.card}`}>
+                <div className="flex items-center gap-3">
+                  <span className={`h-2.5 w-2.5 rounded-full ${tone.dot}`} />
+                  <div>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-current/60">
+                      {step.label}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-current/80">{step.description}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </section>
   );

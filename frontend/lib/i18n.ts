@@ -118,6 +118,10 @@ type LocaleMessages = {
     streamInitFailed: string;
     answerReceived: string;
     requestFailed: string;
+    presetSelected: string;
+    presetLlmSkipped: string;
+    presetAnswerReady: string;
+    presetAnswerMissing: string;
   };
   apiErrors: {
     backendRequestFailedStatus: (status: number) => string;
@@ -153,6 +157,7 @@ const LOCALES: Record<UiLocale, LocaleMessages> = {
         cache: "cache",
         pipeline: "pipeline",
         history: "history",
+        preset: "preset",
       },
       cacheHit: "cache hit",
       cacheMiss: "cache miss",
@@ -197,7 +202,7 @@ const LOCALES: Record<UiLocale, LocaleMessages> = {
     },
     suggestedQuestions: {
       eyebrow: "Suggested questions",
-      title: "Question bank",
+      title: "Top 20 questions",
       loading: "Loading...",
       refresh: "Refresh",
       empty: "No suggested questions available.",
@@ -288,6 +293,10 @@ const LOCALES: Record<UiLocale, LocaleMessages> = {
       streamInitFailed: "Unable to initialize EventSource. Falling back to answer-only mode.",
       answerReceived: "Final answer received from /api/ask.",
       requestFailed: "Request failed. The backend did not return a valid answer.",
+      presetSelected: "Local preset selected. Backend and LLM remain disabled.",
+      presetLlmSkipped: "LLM step skipped. Preset response loaded locally.",
+      presetAnswerReady: "Preset answer is ready.",
+      presetAnswerMissing: "Preset answer bank is missing an entry for this query.",
     },
     apiErrors: {
       backendRequestFailedStatus: (status) => `Backend request failed with status ${status}.`,
@@ -300,8 +309,8 @@ const LOCALES: Record<UiLocale, LocaleMessages> = {
   cs: {
     metadata: {
       lang: "cs",
-      title: "Hybrid RAG SEC AI Ovládací Panel",
-      description: "Živý dashboard běhu pipeline pro Hybrid RAG SEC AI.",
+      title: "DocBrain",
+      description: "Prémiové auditní rozhraní pro ověřování SEC dokumentů a finančních rizik.",
     },
     common: {
       streamStatuses: {
@@ -319,8 +328,9 @@ const LOCALES: Record<UiLocale, LocaleMessages> = {
       },
       answerModes: {
         cache: "cache",
-        pipeline: "pipeline",
+        pipeline: "živé ověření",
         history: "historie",
+        preset: "preset",
       },
       cacheHit: "zásah cache",
       cacheMiss: "bez cache",
@@ -333,129 +343,133 @@ const LOCALES: Record<UiLocale, LocaleMessages> = {
       streamLabel: "stream",
     },
     dashboard: {
-      defaultQuery: "Jaká právní rizika Apple uváděl ve svých 10-K filings?",
-      heroTitle: "Živé řídicí centrum pipeline pro AI vyhledávání v SEC filings a generování odpovědí.",
-      runtimeProfileLabel: "Profil běhu",
+      defaultQuery: "What legal risks did Apple mention in its 10-K filings?",
+      heroTitle: "DocBrain převádí SEC filings na ověřené investiční poznatky v jednom auditním toku.",
+      runtimeProfileLabel: "Auditní režim",
       runtimeProfileText:
-        "Dvou-panelový dashboard pro demo, debugging a technické prezentace. Rozhraní poslouchá živé události pipeline a vykresluje finální podloženou odpověď z produkčního backendu.",
+        "Rozhraní pro due diligence nad SEC filings. Sleduje auditní stopu retrieval pipeline, zachovává zdroje a vrací finální odpověď podloženou produkčním backendem.",
       cacheClearedMessage: (redisKeysDeleted, cacheReset) =>
         `Cache vyčištěna. Smazané Redis klíče: ${redisKeysDeleted}. Soubor answer cache resetován: ${cacheReset ? "ano" : "ne"}.`,
       cacheClearError: "Vyčištění backend cache se nepodařilo.",
     },
     promptPanel: {
-      eyebrow: "Panel dotazu",
-      title: "Spustit živý dotaz nad filings",
+      eyebrow: "Intelligence Input",
+      title: "Zadejte dotaz pro finanční audit",
       description:
-        "Odešli prompt do produkčního RAG backendu a sleduj, jak se jednotlivé kroky pipeline aktualizují v reálném čase.",
-      queryLabel: "Dotaz",
-      helperTitle: "Ptej se na SEC filings a finanční reporty.",
+        "Zadejte vlastní zadání nebo spusťte rychlý audit. Funkční logika RAG, API i SEC vyhledávání zůstává beze změny.",
+      queryLabel: "Auditní zadání",
+      helperTitle: "Rychlý audit",
       helperExamples: [
-        "Jaká právní rizika Apple uváděl ve svých 10-K filings?",
-        "Shrň rizikové faktory ve výroční zprávě NVIDIA.",
-        "Jaká litigace rizika se ve filings objevují?",
+        "Právní rizika společnosti Apple v posledním 10-K.",
+        "Finanční zdraví NVIDIA podle nejnovější výroční zprávy.",
+        "Kyberbezpečnostní expozice a rizika dodavatelského řetězce.",
       ],
-      placeholder: "Jaká právní rizika Apple uváděl ve svých 10-K filings?",
-      warningTitle: "Tento systém je určen k analýze SEC filings a finančních dokumentů.",
-      warningText: "Ptej se prosím na témata související s firemními filings nebo finančními reporty.",
-      transportLabel: "Transport",
-      transportText: "Živý běh přes SSE a finální odpověď přes POST.",
-      refresh: "Obnovit",
-      running: "Spouštím...",
-      askPipeline: "Spustit pipeline",
+      placeholder: "Např. porovnej právní, finanční a provozní riziko firmy podle posledního SEC 10-K.",
+      warningTitle: "DocBrain analyzuje SEC filings a finanční dokumenty.",
+      warningText: "Pokládejte dotazy k právním rizikům, finančnímu zdraví, kyberbezpečnosti nebo dodavatelskému řetězci.",
+      transportLabel: "Přenos",
+      transportText: "Živá telemetrie přes SSE, finální odpověď přes POST.",
+      refresh: "Obnovit panel",
+      running: "Ověřuji...",
+      askPipeline: "Spustit audit",
     },
     suggestedQuestions: {
-      eyebrow: "Doporučené dotazy",
-      title: "Banka dotazů",
+      eyebrow: "Prednastavené dotazy",
+      title: "20 prednastavenych otazek",
       loading: "Načítání...",
       refresh: "Obnovit",
       empty: "Nejsou dostupné žádné doporučené dotazy.",
       loadError: "Načtení doporučených dotazů se nepodařilo.",
     },
     queryHistory: {
-      eyebrow: "Historie dotazů",
-      title: "Předchozí běhy",
-      stored: (count) => `${count} uloženo`,
+      eyebrow: "Sidebar",
+      title: "Historie analýz",
+      stored: (count) => `${count} záznamů`,
       deletingCache: "Mažu cache...",
-      deleteCache: "Smazat cache",
-      clearAll: "Vymazat vše",
-      empty: "Zatím žádné dotazy. Odešli prompt a vytvoř historii, kterou lze znovu přehrát.",
+      deleteCache: "Vyčistit cache",
+      clearAll: "Smazat vše",
+      empty: "Zatím nebyla spuštěna žádná analýza. Po prvním auditu se zde objeví historie i reporty.",
       open: "Otevřít",
       runAgain: "Spustit znovu",
       delete: "Smazat",
       cacheLabel: (hit) => (hit ? "zásah cache" : "bez cache"),
     },
     pipeline: {
-      eyebrow: "Pohled na pipeline",
-      title: "Mapa běhu",
+      eyebrow: "Auditní stopa",
+      title: "Auditní stopa",
       steps: {
         prompt: {
-          label: "Prompt",
-          description: "Příchozí uživatelský dotaz vstupuje do běhového grafu.",
+          label: "Příjem dotazu",
+          description: "Vstupní zadání je zařazeno do auditního toku.",
         },
         embedding: {
           label: "Embedding",
-          description: "Dotaz se převádí do vektorového prostoru pro retrieval.",
+          description: "Dotaz se převádí do vektorového prostoru pro ověřené vyhledání.",
         },
         retrieval: {
-          label: "Hybridní retrieval",
-          description: "Qdrant a BM25 provedou hledání a sloučí kandidáty.",
+          label: "Retrieval",
+          description: "Qdrant a BM25 dohledají relevantní filingy a sloučí kandidáty.",
         },
         rerank: {
           label: "Rerank",
-          description: "CrossEncoder přeskóruje nejhodnotnější chunky.",
+          description: "CrossEncoder vytřídí nejdůležitější pasáže pro investiční audit.",
         },
         context: {
-          label: "Sestavení kontextu",
-          description: "Nejrelevantnější pasáže se zformátují pro generování odpovědi.",
+          label: "Validace kontextu",
+          description: "Vybrané pasáže jsou připraveny pro odpověď se zachovanými zdroji.",
         },
         llm: {
           label: "LLM",
-          description: "LLM vygeneruje finální podloženou odpověď.",
+          description: "LLM sestaví finální, zdrojově podloženou odpověď.",
         },
         answer: {
-          label: "Odpověď",
-          description: "Finální odpověď a zdroje se vrátí do rozhraní.",
+          label: "Výstup",
+          description: "Ověřené poznatky a citace jsou vráceny do rozhraní.",
         },
       },
       events: {
         empty: "Prázdná událost",
-        query: "Dotaz přijat",
+        query: "Dotaz přijat do auditní stopy",
         embedding: "Embedding dokončen",
         retrieval: "Retrieval dokončen",
         rerank: "Rerank dokončen",
-        context: "Kontext sestaven",
-        llm: "LLM generuje odpověď",
+        context: "Kontext validován",
+        llm: "LLM připravuje ověřené poznatky",
         answer: "Odpověď připravena",
       },
     },
     executionLog: {
-      eyebrow: "Log běhu",
-      title: "Živá stopa pipeline",
-      empty: "Spusť dotaz a sleduj, jak sem v reálném čase přicházejí backendové události.",
+      eyebrow: "Provozní telemetrie",
+      title: "Tok ověřování",
+      empty: "Spusťte audit a sledujte, jak do rozhraní přichází živé backendové události.",
     },
     answerResult: {
-      eyebrow: "Finální odpověď",
-      title: "Podložená odpověď",
-      waiting: "Finální odpověď se zde zobrazí po dokončení běhu backendu.",
-      query: "Dotaz",
-      answer: "Odpověď",
-      llmRunInfo: "Informace o běhu LLM",
+      eyebrow: "Výsledky",
+      title: "Ověřené poznatky",
+      waiting: "Po dokončení backendového běhu se zde zobrazí finální auditní výstup.",
+      query: "Auditní zadání",
+      answer: "Poznatky",
+      llmRunInfo: "Auditní metadata",
       runId: "run_id",
       source: "zdroj",
-      pipeline: "pipeline",
+      pipeline: "živé ověření",
       cache: "cache",
       sources: "Zdroje",
       noSources: "Nebyly vráceny žádné zdroje.",
     },
     hookMessages: {
       legacySnapshotMissing: "Tato starší položka historie neobsahuje kompletní uložený snapshot běhu.",
-      querySubmitted: "Dotaz byl odeslán z frontendového řídicího panelu.",
-      streamConnected: "Živý stream pipeline byl připojen.",
-      streamDisconnected: "Živý stream pipeline se odpojil. Požadavek na finální odpověď stále běží.",
+      querySubmitted: "Auditní zadání bylo odesláno z rozhraní DocBrain.",
+      streamConnected: "Živý stream auditní stopy byl připojen.",
+      streamDisconnected: "Živý stream auditní stopy se odpojil. Finální odpověď se stále zpracovává.",
       streamUnavailable: "Živý stream není dostupný. Přepínám do režimu pouze s odpovědí.",
       streamInitFailed: "Inicializace EventSource selhala. Přepínám do režimu pouze s odpovědí.",
-      answerReceived: "Finální odpověď byla přijata z /api/ask.",
+      answerReceived: "Finální auditní odpověď byla přijata z /api/ask.",
       requestFailed: "Požadavek selhal. Backend nevrátil platnou odpověď.",
+      presetSelected: "Byl zvolen lokalni preset. Backend i LLM zustavaji vypnute.",
+      presetLlmSkipped: "Krok LLM byl preskocen. Preset odpoved byla nactena lokalne.",
+      presetAnswerReady: "Preset odpoved je pripravena.",
+      presetAnswerMissing: "V bance preset odpovedi chybi zaznam pro tento dotaz.",
     },
     apiErrors: {
       backendRequestFailedStatus: (status) => `Požadavek na backend selhal se statusem ${status}.`,
@@ -489,6 +503,7 @@ const LOCALES: Record<UiLocale, LocaleMessages> = {
         cache: "кэш",
         pipeline: "пайплайн",
         history: "история",
+        preset: "пресет",
       },
       cacheHit: "попадание в кэш",
       cacheMiss: "мимо кэша",
@@ -533,7 +548,7 @@ const LOCALES: Record<UiLocale, LocaleMessages> = {
     },
     suggestedQuestions: {
       eyebrow: "Рекомендуемые вопросы",
-      title: "Банк вопросов",
+      title: "20 готовых вопросов",
       loading: "Загрузка...",
       refresh: "Обновить",
       empty: "Нет доступных рекомендуемых вопросов.",
@@ -624,6 +639,10 @@ const LOCALES: Record<UiLocale, LocaleMessages> = {
       streamInitFailed: "Не удалось инициализировать EventSource. Переключение в режим только ответа.",
       answerReceived: "Финальный ответ получен из /api/ask.",
       requestFailed: "Запрос завершился ошибкой. Backend не вернул корректный ответ.",
+      presetSelected: "Выбран локальный пресет. Backend и LLM не вызываются.",
+      presetLlmSkipped: "Шаг LLM пропущен. Локальный пресет загружен.",
+      presetAnswerReady: "Preset-ответ готов.",
+      presetAnswerMissing: "В банке preset-ответов нет записи для этого запроса.",
     },
     apiErrors: {
       backendRequestFailedStatus: (status) => `Запрос к backend завершился ошибкой со статусом ${status}.`,
@@ -640,23 +659,19 @@ function normalizeLocale(value: string | undefined): UiLocale {
   if (normalized === "cs" || normalized === "ru" || normalized === "en") {
     return normalized;
   }
-  return "en";
+  return "cs";
 }
 
 export const LOCALE_STORAGE_KEY = "hybrid-rag-sec-ai-ui-locale";
-export const uiLocale = normalizeLocale(process.env.NEXT_PUBLIC_UI_LOCALE);
-export const copy = LOCALES[uiLocale];
+export const uiLocale: UiLocale = "cs";
+export const copy = LOCALES.cs;
 
 export function getCopyForLocale(locale: UiLocale) {
   return LOCALES[locale];
 }
 
 export function getRuntimeLocale(): UiLocale {
-  if (typeof window === "undefined") {
-    return uiLocale;
-  }
-
-  return normalizeLocale(window.localStorage.getItem(LOCALE_STORAGE_KEY) ?? undefined);
+  return "cs";
 }
 
 export function getRuntimeCopy() {

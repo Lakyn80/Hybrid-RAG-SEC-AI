@@ -15,76 +15,87 @@ export function SuggestedQuestions({ onSelect }: SuggestedQuestionsProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadQuestions = async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await getQuestionBank();
-      setQuestions(response.questions);
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : copy.suggestedQuestions.loadError,
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
+    let isMounted = true;
+
+    const loadQuestions = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const response = await getQuestionBank();
+        if (!isMounted) {
+          return;
+        }
+
+        setQuestions(response.questions.slice(0, 20));
+      } catch (loadError) {
+        if (!isMounted) {
+          return;
+        }
+
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : copy.suggestedQuestions.loadError,
+        );
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
     void loadQuestions();
-  }, []);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [copy.suggestedQuestions.loadError]);
 
   return (
-    <section className="panel rounded-[32px] p-5 sm:p-6">
+    <section className="panel p-5 sm:p-6">
       <div className="mb-5 flex items-end justify-between gap-4">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-slate-500">
             {copy.suggestedQuestions.eyebrow}
           </p>
-          <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
+          <h2 className="text-metallic-gold mt-2 text-xl font-semibold tracking-tight">
             {copy.suggestedQuestions.title}
           </h2>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            void loadQuestions();
-          }}
-          disabled={isLoading}
-          className="rounded-full border border-slate-200 bg-white px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isLoading ? copy.suggestedQuestions.loading : copy.suggestedQuestions.refresh}
-        </button>
+        <div className="rounded-[2px] border border-line bg-white/5 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-slate-300">
+          {isLoading ? copy.suggestedQuestions.loading : questions.length}
+        </div>
       </div>
 
       {error ? (
-        <div className="rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">
+        <div className="border border-red-500/30 bg-red-500/10 px-4 py-4 text-sm leading-6 text-red-100">
           {error}
         </div>
       ) : null}
 
       {!error && questions.length === 0 && !isLoading ? (
-        <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm leading-6 text-slate-500">
+        <div className="border border-dashed border-line bg-[#0d0d0d] px-4 py-6 text-sm leading-6 text-slate-400">
           {copy.suggestedQuestions.empty}
         </div>
       ) : null}
 
-      <div className="max-h-[320px] space-y-3 overflow-auto pr-1">
-        {questions.map((question) => (
-          <button
-            key={question}
-            type="button"
-            onClick={() => onSelect(question)}
-            className="w-full rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-left text-sm leading-6 text-slate-700 transition hover:border-brand/30 hover:bg-brand-soft/40"
-          >
-            {question}
-          </button>
-        ))}
-      </div>
+      {!error && questions.length > 0 ? (
+        <div className="max-h-[320px] space-y-3 overflow-auto pr-1">
+          {questions.map((question) => (
+            <button
+              key={question}
+              type="button"
+              onClick={() => onSelect(question)}
+              className="w-full border border-line bg-[#0d0d0d] px-4 py-3 text-left text-sm leading-6 text-slate-200 transition hover:border-[#f5d15a]/35 hover:bg-[#f5d15a]/10"
+            >
+              {question}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -30,12 +30,12 @@ const config: Config = {
         mono: ["var(--font-ibm-plex-mono)"],
       },
       boxShadow: {
-        panel: "0 24px 70px rgba(15, 23, 42, 0.08)",
-        focus: "0 0 0 3px rgba(14, 116, 144, 0.18)",
+        panel: "0 22px 50px rgba(0, 0, 0, 0.48)",
+        focus: "0 0 0 2px rgba(248, 250, 252, 0.18)",
       },
       backgroundImage: {
         "hero-grid":
-          "linear-gradient(to right, rgba(148, 163, 184, 0.08) 1px, transparent 1px), linear-gradient(to bottom, rgba(148, 163, 184, 0.08) 1px, transparent 1px)",
+          "linear-gradient(to right, rgba(71, 85, 105, 0.22) 1px, transparent 1px), linear-gradient(to bottom, rgba(71, 85, 105, 0.22) 1px, transparent 1px)",
       },
       animation: {
         pulseGlow: "pulseGlow 1.8s ease-in-out infinite",
@@ -43,8 +43,8 @@ const config: Config = {
       },
       keyframes: {
         pulseGlow: {
-          "0%, 100%": { boxShadow: "0 0 0 0 rgba(14, 116, 144, 0.18)" },
-          "50%": { boxShadow: "0 0 0 10px rgba(14, 116, 144, 0)" },
+          "0%, 100%": { boxShadow: "0 0 0 0 rgba(248, 250, 252, 0.22)" },
+          "50%": { boxShadow: "0 0 0 10px rgba(248, 250, 252, 0)" },
         },
         slideFade: {
           "0%": { opacity: "0", transform: "translateY(10px)" },

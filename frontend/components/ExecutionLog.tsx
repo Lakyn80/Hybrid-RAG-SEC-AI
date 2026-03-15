@@ -54,11 +54,11 @@ export function ExecutionLog({ logs, status, isLoading }: ExecutionLogProps) {
   const pill = statusLabel(status, locale);
 
   return (
-    <section className="panel rounded-[32px] p-5 sm:p-6">
+    <section className="panel p-5 sm:p-6">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-slate-500">{copy.executionLog.eyebrow}</p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{copy.executionLog.title}</h2>
+          <h2 className="text-metallic-gold mt-2 text-2xl font-semibold tracking-tight">{copy.executionLog.title}</h2>
         </div>
         <div className="flex flex-wrap gap-2">
           <StatusPill label={pill.label} variant={pill.variant} />
@@ -68,10 +68,10 @@ export function ExecutionLog({ logs, status, isLoading }: ExecutionLogProps) {
 
       <div
         ref={scrollRef}
-        className="max-h-[420px] overflow-auto rounded-[26px] border border-slate-200 bg-slate-950 px-3 py-3 sm:px-4"
+        className="max-h-[420px] overflow-auto border border-line bg-[#090909] px-3 py-3 sm:px-4"
       >
         {logs.length === 0 ? (
-          <div className="flex min-h-[320px] items-center justify-center rounded-[20px] border border-dashed border-slate-700 bg-slate-900/70 px-6 text-center text-sm leading-7 text-slate-400">
+          <div className="flex min-h-[320px] items-center justify-center border border-dashed border-line bg-[#0f0f0f] px-6 text-center text-sm leading-7 text-slate-400">
             {copy.executionLog.empty}
           </div>
         ) : (
@@ -79,18 +79,18 @@ export function ExecutionLog({ logs, status, isLoading }: ExecutionLogProps) {
             {logs.map((entry, index) => {
               const tone =
                 entry.severity === "error"
-                  ? "border-red-500/30 bg-red-950/30 text-red-100"
+                  ? "border-red-500/30 bg-red-950/20 text-red-100"
                   : entry.severity === "system"
-                    ? "border-cyan-500/20 bg-cyan-950/20 text-cyan-100"
-                    : "border-slate-700 bg-slate-900 text-slate-100";
+                    ? "border-[#f5d15a]/25 bg-[#f5d15a]/10 text-[#f7e3a0]"
+                    : "border-line bg-[#111111] text-slate-100";
 
               return (
                 <li
                   key={entry.id}
-                  className={`animate-slideFade rounded-[20px] border px-3 py-3 ${tone}`}
+                  className={`animate-slideFade border px-3 py-3 ${tone}`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-current/20 font-mono text-[11px]">
+                    <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[2px] border border-current/20 font-mono text-[11px]">
                       {String(index + 1).padStart(2, "0")}
                     </div>
                     <div className="min-w-0 flex-1">

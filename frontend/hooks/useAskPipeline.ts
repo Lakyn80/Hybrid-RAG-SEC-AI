@@ -6,6 +6,8 @@ import { useUiLocale } from "@/components/UiLocaleProvider";
 import { useEventStream } from "@/hooks/useEventStream";
 import { askQuestion } from "@/lib/api";
 import { getRuntimeCopy } from "@/lib/i18n";
+import { getStoredPresetAnswerByQuery } from "@/lib/presetAnswerBank";
+import { getPresetQuestionByQuery } from "@/lib/presetCatalog";
 import { createInitialSteps } from "@/lib/pipelineMap";
 import {
   AskResponse,
@@ -20,6 +22,18 @@ import {
 
 const HISTORY_STORAGE_KEY = "hybrid-rag-sec-ai-history";
 const HISTORY_LIMIT = 10;
+const PRESET_SEQUENCE: PipelineStepId[] = [
+  "embedding",
+  "retrieval",
+  "rerank",
+  "context",
+];
+
+function wait(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
 
 function createLogEntry(
   message: string,
@@ -77,6 +91,75 @@ function markPromptActive(steps: PipelineStepState[]): PipelineStepState[] {
           status: "idle",
         },
   );
+}
+
+function markPresetStepActive(
+  steps: PipelineStepState[],
+  activeStepId: PipelineStepId,
+): PipelineStepState[] {
+  const activeIndex = steps.findIndex((step) => step.id === activeStepId);
+
+  return steps.map((step, currentIndex) => {
+    if (currentIndex < activeIndex) {
+      return { ...step, status: "completed" };
+    }
+
+    if (step.id === activeStepId) {
+      return { ...step, status: "active" };
+    }
+
+    if (step.id === "llm" || step.id === "answer") {
+      return { ...step, status: "idle" };
+    }
+
+    return { ...step, status: "idle" };
+  });
+}
+
+function finalizePresetSteps(steps: PipelineStepState[]): PipelineStepState[] {
+  return steps.map((step) => {
+    if (
+      step.id === "prompt" ||
+      step.id === "embedding" ||
+      step.id === "retrieval" ||
+      step.id === "rerank" ||
+      step.id === "context" ||
+      step.id === "answer"
+    ) {
+      return { ...step, status: "completed" };
+    }
+
+    if (step.id === "llm") {
+      return { ...step, status: "idle" };
+    }
+
+    return step;
+  });
+}
+
+function getPresetEventMessage(
+  stepId: (typeof PRESET_SEQUENCE)[number],
+  copy: ReturnType<typeof getRuntimeCopy>,
+) {
+  switch (stepId) {
+    case "embedding":
+      return copy.pipeline.events.embedding;
+    case "retrieval":
+      return copy.pipeline.events.retrieval;
+    case "rerank":
+      return copy.pipeline.events.rerank;
+    case "context":
+      return copy.pipeline.events.context;
+    default:
+      return copy.pipeline.events.empty;
+  }
+}
+
+function createPresetMissingMessage(
+  label: string,
+  query: string,
+) {
+  return `${label} ${query}`;
 }
 
 function advanceSteps(
@@ -302,7 +385,7 @@ function buildHistoryEntry(
     createdAt: snapshot.startedAt ?? new Date().toISOString(),
     answer: snapshot.answer?.answer,
     mode: snapshot.answer?.mode,
-    cacheHit: snapshot.answer?.cache_hit,
+    cacheHit: snapshot.answer?.mode === "preset" ? undefined : snapshot.answer?.cache_hit,
     status,
     snapshot,
   };
@@ -447,6 +530,160 @@ export function useAskPipeline() {
     window.localStorage.removeItem(HISTORY_STORAGE_KEY);
   }, [close]);
 
+  const runStoredPresetAnswer = useCallback(
+    async (runId: string, query: string, startedAt: string) => {
+      const presetQuestion = getPresetQuestionByQuery(query);
+      if (!presetQuestion) {
+        return false;
+      }
+      const storedAnswer = getStoredPresetAnswerByQuery(query);
+
+      close();
+
+      if (!storedAnswer) {
+        const message = createPresetMissingMessage(
+          copy.hookMessages.presetAnswerMissing,
+          query,
+        );
+        const failedRun: RunState = {
+          query,
+          steps: markPromptActive(createInitialSteps()).map((step) =>
+            step.id === "prompt" ? step : { ...step, status: "idle" },
+          ),
+          logs: [
+            createLogEntry(
+              copy.hookMessages.querySubmitted,
+              "frontend_query_submitted",
+              "prompt",
+              "system",
+            ),
+            createLogEntry(
+              message,
+              `preset_missing:${presetQuestion.id}`,
+              "answer",
+              "error",
+            ),
+          ],
+          answer: null,
+          error: message,
+          isLoading: false,
+          isStreaming: false,
+          streamStatus: "closed",
+          startedAt,
+          observedStreamEvents: false,
+        };
+
+        setRun(failedRun);
+        addHistory(buildHistoryEntry(runId, failedRun, "error"));
+        return true;
+      }
+
+      const initialRun: RunState = {
+        query,
+        steps: markPromptActive(createInitialSteps()),
+        logs: [
+          createLogEntry(
+            copy.hookMessages.querySubmitted,
+            "frontend_query_submitted",
+            "prompt",
+            "system",
+          ),
+          createLogEntry(
+            copy.hookMessages.presetSelected,
+            `preset_selected:${presetQuestion.id}`,
+            "prompt",
+            "system",
+          ),
+        ],
+        answer: null,
+        error: null,
+        isLoading: true,
+        isStreaming: false,
+        streamStatus: "idle",
+        startedAt,
+        observedStreamEvents: true,
+      };
+
+      setRun(initialRun);
+      addHistory(buildHistoryEntry(runId, initialRun, "pending"));
+
+      for (const stepId of PRESET_SEQUENCE) {
+        await wait(220);
+
+        if (activeRunIdRef.current !== runId) {
+          return true;
+        }
+
+        setRun((previousRun) => ({
+          ...previousRun,
+          steps: markPresetStepActive(previousRun.steps, stepId),
+          logs: [
+            ...previousRun.logs,
+            createLogEntry(
+              getPresetEventMessage(stepId, copy),
+              `preset_${stepId}`,
+              stepId,
+              "system",
+            ),
+          ],
+        }));
+      }
+
+      await wait(220);
+
+      if (activeRunIdRef.current !== runId) {
+        return true;
+      }
+
+      const answer: AskResponse = {
+        query,
+        answer: storedAnswer.answer,
+        mode: "preset",
+        sources: storedAnswer.sources,
+        cache_hit: storedAnswer.cache_hit,
+        run_id: storedAnswer.run_id ?? `preset-${presetQuestion.id}`,
+      };
+
+      let historyEntry: HistoryEntry | null = null;
+      setRun((previousRun) => {
+        const nextRun: RunState = {
+          ...previousRun,
+          answer,
+          error: null,
+          isLoading: false,
+          isStreaming: false,
+          streamStatus: "closed",
+          steps: finalizePresetSteps(previousRun.steps),
+          logs: [
+            ...previousRun.logs,
+            createLogEntry(
+              copy.hookMessages.presetLlmSkipped,
+              `preset_llm_skipped:${presetQuestion.id}`,
+              undefined,
+              "system",
+            ),
+            createLogEntry(
+              copy.hookMessages.presetAnswerReady,
+              `preset_answer_ready:${presetQuestion.id}`,
+              "answer",
+              "system",
+            ),
+          ],
+        };
+
+        historyEntry = buildHistoryEntry(runId, nextRun, "success");
+        return nextRun;
+      });
+
+      if (historyEntry) {
+        addHistory(historyEntry);
+      }
+
+      return true;
+    },
+    [addHistory, close, copy],
+  );
+
   const submitQuery = useCallback(
     async (query: string) => {
       const trimmedQuery = query.trim();
@@ -464,6 +701,10 @@ export function useAskPipeline() {
       hasOpenedStreamRef.current = false;
       observedStreamEventRef.current = false;
       setActiveHistoryId(runId);
+
+      if (await runStoredPresetAnswer(runId, trimmedQuery, startedAt)) {
+        return;
+      }
 
       const initialRun: RunState = {
         query: trimmedQuery,
@@ -647,7 +888,7 @@ export function useAskPipeline() {
         }
       }
     },
-    [addHistory, addLog, close, connect],
+    [addHistory, addLog, close, connect, copy.hookMessages.querySubmitted, runStoredPresetAnswer],
   );
 
   const rerunHistoryEntry = useCallback(

@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 
 import { AnswerResult } from "@/components/AnswerResult";
 import { ExecutionLog } from "@/components/ExecutionLog";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { PipelineVisualizer } from "@/components/PipelineVisualizer";
 import { PromptPanel } from "@/components/PromptPanel";
 import { QueryHistory } from "@/components/QueryHistory";
@@ -67,35 +66,58 @@ export function Dashboard() {
   };
 
   return (
-    <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-[1680px] flex-col px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
-      <header className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="max-w-4xl">
-          <div className="mb-3 flex flex-wrap items-center gap-3">
-            <p className="inline-flex rounded-full border border-brand/20 bg-brand-soft px-3 py-1 font-mono text-[11px] uppercase tracking-[0.26em] text-brand">
-              Hybrid RAG SEC AI
+    <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-[1760px] flex-col px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+      <header className="mb-6 grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_420px]">
+        <div className="panel panel-accent p-6 sm:p-7">
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <p className="inline-flex rounded-[2px] border border-line bg-white/5 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.3em] text-slate-300">
+              DocBrain
             </p>
-            <LanguageSwitcher />
+            <p className="inline-flex rounded-[2px] border border-line bg-white/5 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.24em] text-slate-400">
+              Obsidian &amp; Chrome
+            </p>
           </div>
-          <h1 className="text-balance text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">
+          <h1 className="text-metallic-gold max-w-4xl text-balance text-3xl font-semibold tracking-tight sm:text-[2.6rem]">
             {copy.dashboard.heroTitle}
           </h1>
+          <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-400">
+            Auditní rozhraní pro investory, compliance a právní due diligence. Sledujte celý tok od retrieval až po finální zdrojově podložený závěr.
+          </p>
         </div>
-        <div className="max-w-xl rounded-3xl border border-slate-200/80 bg-white/85 px-5 py-4 shadow-panel">
-          <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-slate-500">
+
+        <div className="panel p-6">
+          <p className="font-mono text-[11px] uppercase tracking-[0.26em] text-slate-400">
             {copy.dashboard.runtimeProfileLabel}
           </p>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
+          <p className="mt-3 text-sm leading-7 text-slate-300">
             {copy.dashboard.runtimeProfileText}
           </p>
+          <div className="mt-5 grid gap-px border border-line bg-line sm:grid-cols-3">
+            <div className="bg-paper px-4 py-3">
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500">Retrieval</p>
+              <p className="mt-2 text-sm text-slate-200">Qdrant + BM25</p>
+            </div>
+            <div className="bg-paper px-4 py-3">
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500">Zdroj</p>
+              <p className="mt-2 text-sm text-slate-200">SEC filings</p>
+            </div>
+            <div className="bg-paper px-4 py-3">
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500">Výstup</p>
+              <p className="mt-2 text-sm text-slate-200">Ověřené poznatky</p>
+            </div>
+          </div>
         </div>
       </header>
 
-      <section className="grid flex-1 gap-6 xl:grid-cols-[390px_minmax(0,1fr)]">
-        <div className="flex min-h-[720px] flex-col gap-6">
+      <section className="grid flex-1 gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
+        <div className="flex min-h-[720px] flex-col gap-5">
           <PromptPanel
             query={query}
             isLoading={run.isLoading}
             onQueryChange={setQuery}
+            onQuickSelect={(selectedQuery) => {
+              setQuery(selectedQuery);
+            }}
             onSubmit={() => {
               void handleSubmit();
             }}
@@ -136,7 +158,7 @@ export function Dashboard() {
           />
         </div>
 
-        <div className="grid min-h-[720px] gap-6 lg:grid-rows-[auto_minmax(0,1fr)_auto]">
+        <div className="grid min-h-[720px] gap-5 lg:grid-rows-[auto_minmax(0,1fr)_auto]">
           <PipelineVisualizer
             isLoading={run.isLoading}
             status={run.streamStatus}

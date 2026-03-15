@@ -8,11 +8,11 @@ interface StatusPillProps {
 }
 
 const VARIANTS: Record<Variant, string> = {
-  neutral: "border-slate-200 bg-white text-slate-600",
-  info: "border-cyan-200 bg-cyan-50 text-cyan-700",
-  success: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  warning: "border-amber-200 bg-amber-50 text-amber-700",
-  danger: "border-red-200 bg-red-50 text-red-700",
+  neutral: "border-line bg-white/5 text-slate-300",
+  info: "border-[#f5d15a]/30 bg-[#f5d15a]/10 text-[#f6db7d]",
+  success: "border-slate-400 bg-slate-200/10 text-slate-100",
+  warning: "border-amber-500/35 bg-amber-500/10 text-amber-200",
+  danger: "border-red-500/35 bg-red-500/10 text-red-200",
 };
 
 export function StatusPill({
@@ -20,7 +20,7 @@ export function StatusPill({
   variant = "neutral",
 }: StatusPillProps) {
   return (
-    <span className={`inline-flex rounded-full border px-3 py-1 font-mono text-[11px] uppercase tracking-[0.16em] ${VARIANTS[variant]}`}>
+    <span className={`inline-flex rounded-[2px] border px-3 py-1 font-mono text-[11px] uppercase tracking-[0.16em] ${VARIANTS[variant]}`}>
       {label}
     </span>
   );
