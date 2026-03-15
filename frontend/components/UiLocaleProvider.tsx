@@ -14,6 +14,7 @@ import {
   type UiLocale,
   getCopyForLocale,
   getRuntimeLocale,
+  setRuntimeLocale,
   uiLocale as defaultLocale,
 } from "@/lib/i18n";
 
@@ -33,8 +34,10 @@ export function UiLocaleProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    setRuntimeLocale(locale);
     window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
     document.documentElement.lang = getCopyForLocale(locale).metadata.lang;
+    document.title = getCopyForLocale(locale).metadata.title;
   }, [locale]);
 
   const value = useMemo(

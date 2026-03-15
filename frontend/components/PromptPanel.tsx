@@ -19,9 +19,16 @@ export function PromptPanel({
   onQuickSelect,
   onSubmit,
 }: PromptPanelProps) {
-  const { copy } = useUiLocale();
+  const { copy, locale } = useUiLocale();
   const promptGuard = getPromptGuardState(query);
-  const quickAuditPresets = getQuickAuditPresets();
+  const quickAuditPresets = getQuickAuditPresets(locale);
+  const auditLabel = locale === "ru" ? "Аудит" : "Audit";
+  const presetHint =
+    locale === "ru"
+      ? "Эти 4 карточки используют локальные preset-ответы. Backend и LLM не вызываются."
+      : locale === "en"
+        ? "These 4 cards use local preset answers. The backend and LLM stay disabled."
+        : "Tyto 4 karty pouzivaji lokalni preset odpovedi. Backend a LLM se nespousti.";
 
   return (
     <section className="panel panel-accent p-5 sm:p-6">
@@ -55,7 +62,7 @@ export function PromptPanel({
                 <div className="flex items-start justify-between gap-3">
                   <span className="text-lg">{card.icon}</span>
                   <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500">
-                    Audit
+                    {auditLabel}
                   </span>
                 </div>
                 <p className="text-metallic-gold mt-6 text-base font-semibold">{card.title}</p>
@@ -65,7 +72,7 @@ export function PromptPanel({
           })}
         </div>
         <p className="mt-3 text-xs leading-6 text-slate-500">
-          Tyto 4 karty pouzivaji lokalni preset odpovedi. Backend a LLM se nespousti.
+          {presetHint}
         </p>
       </div>
 

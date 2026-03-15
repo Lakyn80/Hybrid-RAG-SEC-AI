@@ -2,6 +2,7 @@
 
 import { useUiLocale } from "@/components/UiLocaleProvider";
 import { translateAnswerMode, translateHistoryStatus } from "@/lib/i18n";
+import { getStoredPresetAnswerByQuery } from "@/lib/presetAnswerBank";
 import { HistoryEntry } from "@/lib/types";
 
 interface QueryHistoryProps {
@@ -36,6 +37,18 @@ export function QueryHistory({
 }: QueryHistoryProps) {
   const { copy, locale } = useUiLocale();
   const savedReports = history.filter((entry) => entry.status === "success").slice(0, 4);
+  const analysisHistoryLabel =
+    locale === "ru" ? "История анализа" : locale === "en" ? "Analysis history" : "Historie analýz";
+  const savedReportsLabel =
+    locale === "ru" ? "Сохраненные отчеты" : locale === "en" ? "Saved reports" : "Uložené reporty";
+  const savedReportsEmpty =
+    locale === "ru"
+      ? "После успешного аудита здесь появятся последние проверенные отчеты."
+      : locale === "en"
+        ? "The latest verified reports will appear here after a successful audit."
+        : "Po úspěšném auditu se zde zobrazí poslední ověřené reporty.";
+  const openReportLabel =
+    locale === "ru" ? "Открыть отчет" : locale === "en" ? "Open report" : "Otevřít report";
 
   return (
     <section className="panel p-5 sm:p-6">
@@ -87,11 +100,13 @@ export function QueryHistory({
         <div className="space-y-5">
           <div>
             <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-slate-500">
-              Historie analýz
+              {analysisHistoryLabel}
             </p>
             <div className="mt-3 max-h-[280px] space-y-3 overflow-auto pr-1">
               {history.map((entry) => {
                 const isActive = entry.id === activeHistoryId;
+                const localizedPreset = getStoredPresetAnswerByQuery(entry.query, locale);
+                const displayedQuery = localizedPreset?.query ?? entry.query;
 
                 return (
                   <div
@@ -109,7 +124,7 @@ export function QueryHistory({
                     >
                       <div className="flex items-start justify-between gap-3">
                         <p className="text-sm font-medium leading-6 text-slate-100">
-                          {entry.query}
+                          {displayedQuery}
                         </p>
                         <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-slate-500">
                           {formatTime(entry.createdAt, locale)}
@@ -164,34 +179,39 @@ export function QueryHistory({
 
           <div>
             <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-slate-500">
-              Uložené reporty
+              {savedReportsLabel}
             </p>
             {savedReports.length === 0 ? (
               <div className="mt-3 border border-dashed border-line bg-[#0d0d0d] px-4 py-5 text-sm leading-6 text-slate-400">
-                Po úspěšném auditu se zde zobrazí poslední ověřené reporty.
+                {savedReportsEmpty}
               </div>
             ) : (
               <div className="mt-3 grid gap-px border border-line bg-line">
-                {savedReports.map((entry) => (
-                  <button
-                    key={`report-${entry.id}`}
-                    type="button"
-                    onClick={() => onRestore(entry.id)}
-                    className="bg-paper px-4 py-4 text-left transition hover:bg-white/5"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-medium leading-6 text-slate-100">
-                        {entry.query}
+                {savedReports.map((entry) => {
+                  const localizedPreset = getStoredPresetAnswerByQuery(entry.query, locale);
+                  const displayedQuery = localizedPreset?.query ?? entry.query;
+
+                  return (
+                    <button
+                      key={`report-${entry.id}`}
+                      type="button"
+                      onClick={() => onRestore(entry.id)}
+                      className="bg-paper px-4 py-4 text-left transition hover:bg-white/5"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-medium leading-6 text-slate-100">
+                          {displayedQuery}
+                        </p>
+                        <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                          {formatTime(entry.createdAt, locale)}
+                        </span>
+                      </div>
+                      <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-[#f6db7d]">
+                        {openReportLabel}
                       </p>
-                      <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-slate-500">
-                        {formatTime(entry.createdAt, locale)}
-                      </span>
-                    </div>
-                    <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.18em] text-[#f6db7d]">
-                      Otevřít report
-                    </p>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

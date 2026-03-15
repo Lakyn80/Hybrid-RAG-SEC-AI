@@ -4,13 +4,15 @@ import { useEffect, useState } from "react";
 
 import { useUiLocale } from "@/components/UiLocaleProvider";
 import { getQuestionBank } from "@/lib/api";
+import { getPresetQuestionByQuery } from "@/lib/presetCatalog";
+import { getLocalizedPresetQueryById } from "@/lib/presetLocalization";
 
 interface SuggestedQuestionsProps {
   onSelect: (query: string) => void;
 }
 
 export function SuggestedQuestions({ onSelect }: SuggestedQuestionsProps) {
-  const { copy } = useUiLocale();
+  const { copy, locale } = useUiLocale();
   const [questions, setQuestions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -84,16 +86,23 @@ export function SuggestedQuestions({ onSelect }: SuggestedQuestionsProps) {
 
       {!error && questions.length > 0 ? (
         <div className="max-h-[320px] space-y-3 overflow-auto pr-1">
-          {questions.map((question) => (
-            <button
-              key={question}
-              type="button"
-              onClick={() => onSelect(question)}
-              className="w-full border border-line bg-[#0d0d0d] px-4 py-3 text-left text-sm leading-6 text-slate-200 transition hover:border-[#f5d15a]/35 hover:bg-[#f5d15a]/10"
-            >
-              {question}
-            </button>
-          ))}
+          {questions.map((question) => {
+            const preset = getPresetQuestionByQuery(question);
+            const localizedQuery = preset
+              ? getLocalizedPresetQueryById(preset.id, locale) ?? question
+              : question;
+
+            return (
+              <button
+                key={question}
+                type="button"
+                onClick={() => onSelect(localizedQuery)}
+                className="w-full border border-line bg-[#0d0d0d] px-4 py-3 text-left text-sm leading-6 text-slate-200 transition hover:border-[#f5d15a]/35 hover:bg-[#f5d15a]/10"
+              >
+                {localizedQuery}
+              </button>
+            );
+          })}
         </div>
       ) : null}
     </section>

@@ -392,7 +392,7 @@ function buildHistoryEntry(
 }
 
 export function useAskPipeline() {
-  const { copy } = useUiLocale();
+  const { copy, locale } = useUiLocale();
   const [run, setRun] = useState<RunState>(createEmptyRun);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
@@ -536,7 +536,7 @@ export function useAskPipeline() {
       if (!presetQuestion) {
         return false;
       }
-      const storedAnswer = getStoredPresetAnswerByQuery(query);
+      const storedAnswer = getStoredPresetAnswerByQuery(query, locale);
 
       close();
 
@@ -681,7 +681,7 @@ export function useAskPipeline() {
 
       return true;
     },
-    [addHistory, close, copy],
+    [addHistory, close, copy, locale],
   );
 
   const submitQuery = useCallback(

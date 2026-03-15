@@ -1,4 +1,9 @@
 import presetAnswerBankData from "@/lib/presetAnswerBank.generated.json";
+import type { UiLocale } from "@/lib/i18n";
+import {
+  findLocalizedPresetEntryByQuery,
+  getLocalizedPresetAnswerById,
+} from "@/lib/presetLocalization";
 
 export interface StoredPresetAnswerEntry {
   id: string;
@@ -24,11 +29,56 @@ function normalizeQuery(value: string) {
   return value.trim().toLowerCase();
 }
 
-export function getStoredPresetAnswerByQuery(query: string) {
+export function getStoredPresetAnswerByQuery(query: string, locale?: UiLocale) {
   const normalized = normalizeQuery(query);
-  return PRESET_ANSWER_BANK.entries.find(
+  const directEntry = PRESET_ANSWER_BANK.entries.find(
     (entry) => normalizeQuery(entry.query) === normalized,
   );
+
+  if (directEntry) {
+    if (!locale) {
+      return directEntry;
+    }
+
+    const localized = getLocalizedPresetAnswerById(directEntry.id, locale);
+    if (!localized) {
+      return directEntry;
+    }
+
+    return {
+      ...directEntry,
+      query: localized.query,
+      answer: localized.answer,
+      sources: localized.sources,
+    };
+  }
+
+  const localizedMatch = findLocalizedPresetEntryByQuery(query);
+  if (!localizedMatch) {
+    return undefined;
+  }
+
+  const canonicalEntry = PRESET_ANSWER_BANK.entries.find(
+    (entry) => entry.id === localizedMatch.id,
+  );
+  if (!canonicalEntry) {
+    return undefined;
+  }
+
+  const localized = getLocalizedPresetAnswerById(
+    localizedMatch.id,
+    locale ?? "cs",
+  );
+  if (!localized) {
+    return canonicalEntry;
+  }
+
+  return {
+    ...canonicalEntry,
+    query: localized.query,
+    answer: localized.answer,
+    sources: localized.sources,
+  };
 }
 
 export function hasStoredPresetAnswers() {

@@ -3,6 +3,7 @@
 import { StatusPill } from "@/components/StatusPill";
 import { useUiLocale } from "@/components/UiLocaleProvider";
 import { translateAnswerMode, translateCacheState, translateStreamStatus } from "@/lib/i18n";
+import { getStoredPresetAnswerByQuery } from "@/lib/presetAnswerBank";
 import { AskResponse, StreamConnectionStatus } from "@/lib/types";
 
 interface AnswerResultProps {
@@ -16,18 +17,19 @@ function parseSourceLines(sources: string) {
   return sources
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line && line !== "Sources:");
+    .filter((line) => line && !/^(Sources|Zdroje|Источники):$/i.test(line));
 }
 
-function createSourceBadge(sourceLine: string) {
+function createSourceBadge(sourceLine: string, locale: "en" | "cs" | "ru") {
   if (/preset|lokalni scenar|llm/i.test(sourceLine)) {
     return "[Preset]";
   }
 
   const formMatch = sourceLine.match(/\b(10-K|10-Q|8-K|DEF\s*14A|DEFA14A|SC\s*13G(?:\/A)?|SC\s*13G\/A)\b/i);
   const pageMatch = sourceLine.match(/\b(?:page|p\.|str\.?)\s*(\d+)\b/i);
-  const form = formMatch ? formMatch[1].replace(/\s+/g, " ").toUpperCase() : "Filing";
-  const page = pageMatch ? `, str. ${pageMatch[1]}` : "";
+  const form = formMatch ? formMatch[1].replace(/\s+/g, " ").toUpperCase() : locale === "ru" ? "Документ" : locale === "cs" ? "Filing" : "Filing";
+  const pagePrefix = locale === "ru" ? "стр." : locale === "en" ? "p." : "str.";
+  const page = pageMatch ? `, ${pagePrefix} ${pageMatch[1]}` : "";
 
   return `[SEC ${form}${page}]`;
 }
@@ -69,7 +71,14 @@ export function AnswerResult({
   streamStatus,
 }: AnswerResultProps) {
   const { copy, locale } = useUiLocale();
-  const sources = answer ? parseSourceLines(answer.sources) : [];
+  const localizedPresetAnswer =
+    answer && answer.mode === "preset"
+      ? getStoredPresetAnswerByQuery(answer.query, locale)
+      : null;
+  const displayedAnswer = localizedPresetAnswer
+    ? { ...answer, ...localizedPresetAnswer }
+    : answer;
+  const sources = displayedAnswer ? parseSourceLines(displayedAnswer.sources) : [];
 
   return (
     <section className="panel p-5 sm:p-6">
@@ -79,9 +88,9 @@ export function AnswerResult({
           <h2 className="text-metallic-gold mt-2 text-2xl font-semibold tracking-tight">{copy.answerResult.title}</h2>
         </div>
         <div className="flex flex-wrap gap-2">
-          {answer?.mode ? <StatusPill label={translateAnswerMode(answer.mode, locale)} variant="info" /> : null}
-          {answer?.mode !== "preset" && typeof answer?.cache_hit === "boolean" ? (
-            <StatusPill label={translateCacheState(answer.cache_hit, locale)} variant={answer.cache_hit ? "success" : "warning"} />
+          {displayedAnswer?.mode ? <StatusPill label={translateAnswerMode(displayedAnswer.mode, locale)} variant="info" /> : null}
+          {displayedAnswer?.mode !== "preset" && typeof displayedAnswer?.cache_hit === "boolean" ? (
+            <StatusPill label={translateCacheState(displayedAnswer.cache_hit, locale)} variant={displayedAnswer.cache_hit ? "success" : "warning"} />
           ) : null}
           <StatusPill label={`${copy.common.streamLabel} ${translateStreamStatus(streamStatus, locale)}`} variant={streamStatus === "fallback" ? "warning" : "neutral"} />
         </div>
@@ -110,25 +119,25 @@ export function AnswerResult({
         </div>
       ) : null}
 
-      {answer ? (
+      {displayedAnswer ? (
         <div className="space-y-5">
           <div className="border border-line bg-[#0d0d0d] px-5 py-5">
             <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-slate-500">{copy.answerResult.query}</p>
-            <p className="mt-2 text-sm leading-7 text-slate-200">{answer.query}</p>
+            <p className="mt-2 text-sm leading-7 text-slate-200">{displayedAnswer.query}</p>
           </div>
 
           <div className="border border-line bg-[#0d0d0d] px-5 py-5">
             <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-slate-500">{copy.answerResult.answer}</p>
-            <div className="mt-3">{renderAnswerBlocks(answer.answer)}</div>
+            <div className="mt-3">{renderAnswerBlocks(displayedAnswer.answer)}</div>
             <div className="mt-4 border border-line bg-black/30 px-4 py-3 text-sm text-slate-400">
               <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-slate-500">{copy.answerResult.llmRunInfo}</p>
               <p className="mt-2 break-all">
                 <span className="font-medium text-slate-200">{copy.answerResult.runId}:</span>{" "}
-                {answer.run_id ?? copy.common.notAvailable}
+                {displayedAnswer.run_id ?? copy.common.notAvailable}
               </p>
               <p className="mt-1">
                 <span className="font-medium text-slate-200">{copy.answerResult.source}:</span>{" "}
-                {answer.cache_hit ? copy.answerResult.cache : copy.answerResult.pipeline}
+                {displayedAnswer.cache_hit ? copy.answerResult.cache : copy.answerResult.pipeline}
               </p>
             </div>
           </div>
@@ -143,7 +152,7 @@ export function AnswerResult({
                   <li key={`${sourceLine}-${index}`} className="border border-line bg-black/30 px-4 py-3 text-sm leading-6 text-slate-200">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <span className="inline-flex w-fit rounded-[2px] border border-slate-300/30 bg-[linear-gradient(90deg,rgba(255,248,204,0.2),rgba(214,158,36,0.16))] px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.16em] text-[#f7e3a0]">
-                        {createSourceBadge(sourceLine)}
+                        {createSourceBadge(sourceLine, locale)}
                       </span>
                       <span className="text-sm leading-6 text-slate-300">{sourceLine}</span>
                     </div>

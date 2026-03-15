@@ -42,6 +42,10 @@ export function PipelineVisualizer({
   isLoading,
 }: PipelineVisualizerProps) {
   const { copy, locale } = useUiLocale();
+  const dataValidationLabel =
+    locale === "ru" ? "Проверка данных" : locale === "en" ? "Data validation" : "Datové ověření";
+  const checkpointsLabel =
+    locale === "ru" ? "Контрольные точки" : locale === "en" ? "Checkpoints" : "Kontrolní body";
   const primarySteps = steps.filter((step) =>
     ["embedding", "retrieval", "rerank", "llm"].includes(step.id),
   );
@@ -68,6 +72,7 @@ export function PipelineVisualizer({
           const connectorActive =
             index < primarySteps.length - 1 &&
             (step.status === "active" || step.status === "completed");
+          const localizedStep = copy.pipeline.steps[step.id];
 
           return (
             <div key={step.id} className="relative bg-paper">
@@ -80,10 +85,10 @@ export function PipelineVisualizer({
                 </div>
                 <div className="mt-10">
                   <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-current/55">
-                    Datové ověření
+                    {dataValidationLabel}
                   </p>
-                  <h3 className="text-metallic-gold mt-3 text-base font-semibold tracking-tight">{step.label}</h3>
-                  <p className="mt-3 text-sm leading-6 text-current/80">{step.description}</p>
+                  <h3 className="text-metallic-gold mt-3 text-base font-semibold tracking-tight">{localizedStep.label}</h3>
+                  <p className="mt-3 text-sm leading-6 text-current/80">{localizedStep.description}</p>
                 </div>
               </div>
 
@@ -101,11 +106,12 @@ export function PipelineVisualizer({
 
       <div className="mt-5">
         <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-slate-500">
-          Kontrolní body
+          {checkpointsLabel}
         </p>
         <div className="mt-3 grid gap-px border border-line bg-line sm:grid-cols-3">
           {secondarySteps.map((step) => {
             const tone = stepTone(step.status);
+            const localizedStep = copy.pipeline.steps[step.id];
 
             return (
               <div key={step.id} className={`border px-4 py-3 ${tone.card}`}>
@@ -113,9 +119,9 @@ export function PipelineVisualizer({
                   <span className={`h-2.5 w-2.5 rounded-full ${tone.dot}`} />
                   <div>
                     <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-current/60">
-                      {step.label}
+                      {localizedStep.label}
                     </p>
-                    <p className="mt-1 text-xs leading-5 text-current/80">{step.description}</p>
+                    <p className="mt-1 text-xs leading-5 text-current/80">{localizedStep.description}</p>
                   </div>
                 </div>
               </div>

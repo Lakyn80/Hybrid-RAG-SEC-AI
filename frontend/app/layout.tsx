@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, Space_Grotesk } from "next/font/google";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 
 import { UiLocaleProvider } from "@/components/UiLocaleProvider";
 import { copy } from "@/lib/i18n";
 import "./globals.css";
 
-const spaceGrotesk = Space_Grotesk({
-  subsets: ["latin"],
+const ibmPlexSans = IBM_Plex_Sans({
+  subsets: ["latin", "cyrillic"],
   variable: "--font-space-grotesk",
+  weight: ["400", "500", "600", "700"],
 });
 
 const ibmPlexMono = IBM_Plex_Mono({
@@ -33,7 +34,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang={copy.metadata.lang}>
-      <body className={`${spaceGrotesk.variable} ${ibmPlexMono.variable}`}>
+      <body className={`${ibmPlexSans.variable} ${ibmPlexMono.variable}`}>
         <UiLocaleProvider>{children}</UiLocaleProvider>
       </body>
     </html>

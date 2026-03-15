@@ -343,7 +343,7 @@ const LOCALES: Record<UiLocale, LocaleMessages> = {
       streamLabel: "stream",
     },
     dashboard: {
-      defaultQuery: "What legal risks did Apple mention in its 10-K filings?",
+      defaultQuery: "Jaká právní rizika Apple uvedl ve svých 10-K filings?",
       heroTitle: "DocBrain převádí SEC filings na ověřené investiční poznatky v jednom auditním toku.",
       runtimeProfileLabel: "Auditní režim",
       runtimeProfileText:
@@ -516,7 +516,7 @@ const LOCALES: Record<UiLocale, LocaleMessages> = {
       streamLabel: "поток",
     },
     dashboard: {
-      defaultQuery: "Какие юридические риски Apple упоминала в своих 10-K filings?",
+      defaultQuery: "Какие юридические риски Apple указала в своих 10-K filings?",
       heroTitle: "Живой центр управления пайплайном для AI-поиска по SEC filings и генерации ответов.",
       runtimeProfileLabel: "Профиль выполнения",
       runtimeProfileText:
@@ -665,13 +665,26 @@ function normalizeLocale(value: string | undefined): UiLocale {
 export const LOCALE_STORAGE_KEY = "hybrid-rag-sec-ai-ui-locale";
 export const uiLocale: UiLocale = "cs";
 export const copy = LOCALES.cs;
+let currentRuntimeLocale: UiLocale = uiLocale;
 
 export function getCopyForLocale(locale: UiLocale) {
   return LOCALES[locale];
 }
 
 export function getRuntimeLocale(): UiLocale {
-  return "cs";
+  if (typeof window !== "undefined") {
+    const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+    if (stored) {
+      currentRuntimeLocale = normalizeLocale(stored);
+      return currentRuntimeLocale;
+    }
+  }
+
+  return currentRuntimeLocale;
+}
+
+export function setRuntimeLocale(locale: UiLocale) {
+  currentRuntimeLocale = normalizeLocale(locale);
 }
 
 export function getRuntimeCopy() {

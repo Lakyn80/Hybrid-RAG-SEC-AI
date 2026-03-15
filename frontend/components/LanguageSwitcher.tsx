@@ -13,7 +13,7 @@ export function LanguageSwitcher() {
   const { locale, setLocale } = useUiLocale();
 
   return (
-    <div className="inline-flex rounded-full border border-slate-200 bg-white/90 p-1 shadow-sm">
+    <div className="inline-flex border border-line bg-[#0d0d0d] p-1">
       {OPTIONS.map((option) => {
         const isActive = option.locale === locale;
 
@@ -22,10 +22,10 @@ export function LanguageSwitcher() {
             key={option.locale}
             type="button"
             onClick={() => setLocale(option.locale)}
-            className={`rounded-full px-3 py-2 font-mono text-[11px] uppercase tracking-[0.22em] transition ${
+            className={`px-3 py-2 font-mono text-[11px] uppercase tracking-[0.22em] transition ${
               isActive
-                ? "bg-slate-950 text-white"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                ? "bg-[linear-gradient(90deg,#fff8cc_0%,#f5d15a_28%,#c9971d_56%,#fff2a0_100%)] text-slate-950"
+                : "text-slate-300 hover:bg-white/5 hover:text-white"
             }`}
           >
             {option.label}
